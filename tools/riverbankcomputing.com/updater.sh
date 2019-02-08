@@ -15,6 +15,8 @@ fi
 RBC_UD_TMP_DIR="/tmp/rbc_updater"
 mkdir -p "${RBC_UD_TMP_DIR}" || die 'Can not make directory ' "${RBC_UD_TMP_DIR}"
 
+UPDATE_STR=""
+
 # Using our tmp dir for working in, fetch updated upstream packages for all software in swlist
 pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 	# swlist format is tab delimited
@@ -66,6 +68,9 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 						printf -- 'Match, no update needed.\n'
 					else
 						printf -- 'Mismatch, update needed.\n'
+						cpstring="cp \"${REPO_TOP}/${catpkg}/${devoldebuild}\" \"${REPO_TOP}/${catpkg}/${devnewebuild}\""
+						UPDATE_STR="$(printf -- '%s\n%s' "${UPDATE_STR}" "${cpstring}")"
+						cpstring=""
 					fi
 				fi
 
@@ -74,17 +79,20 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 					# Detect existing dev ebuild
 					devoldebuild="$( set +f; echo "${catpkg#*/}-${pkgdevver%.dev*}_pre"*.ebuild | tr ' ' '\n' | grep -v -e "\*" | sort -V | tail -1 )"
 					if [ -n "$devoldebuild" ] ; then
-						printf -- '\nOld dev ebuild: %s\n' "${devoldebuild}"
+						printf -- '\nOld dev ebuild: %s\n' "${catpkg}/${devoldebuild}"
 					else
 						printf -- '\nNo existing dev ebuild found.'
 					fi
 					# Determine new dev ebuild information
 					devnewebuild="${catpkg#*/}-${pkgdevportver}.ebuild"
-					printf -- 'New dev ebuild: %s\n' "${devnewebuild}"
+					printf -- 'New dev ebuild: %s\n' "${catpkg}/${devnewebuild}"
 					if [ "${devoldebuild}" = "${devnewebuild}" ] ; then
 						printf -- 'Match, no update needed.\n'
 					else
 						printf -- 'Mismatch, update needed.\n'
+						mvstring="mv \"${REPO_TOP}/${catpkg}/${devoldebuild}\" \"${REPO_TOP}/${catpkg}/${devnewebuild}\""
+						UPDATE_STR="$(printf -- '%s\n%s' "${UPDATE_STR}" "${mvstring}")"
+						mvstring=""
 					fi
 				fi
 			popd > /dev/null || die
@@ -94,3 +102,5 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 
 	done < "${RBC_UD_SWLIST}"
 popd > /dev/null || die
+
+printf -- '%s\n' "${UPDATE_STR}"
