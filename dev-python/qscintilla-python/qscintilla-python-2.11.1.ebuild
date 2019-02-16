@@ -14,7 +14,8 @@ MY_P="QScintilla_gpl-${PV/_pre/.dev}"
 if [[ "${PV}" == *_pre* ]]; then
 	SRC_URI="https://www.riverbankcomputing.com/static/Downloads/${MY_P%%_gpl*}/${MY_P}.tar.gz"
 else
-	SRC_URI="mirror://sourceforge/pyqt/${MY_P}.tar.gz"
+	SRC_URI="https://www.riverbankcomputing.com/static/Downloads/${MY_P%%_gpl*}/${MY_P}.tar.gz"
+	#SRC_URI="mirror://sourceforge/pyqt/${MY_P}.tar.gz"
 fi
 
 LICENSE="GPL-3"
