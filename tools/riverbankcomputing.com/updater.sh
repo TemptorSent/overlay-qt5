@@ -39,7 +39,7 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 		# Detect release package links and extract version details
 		#pkgrel="$(cat "${tmpfile}" | sed -n -e '/<a href="/,/"/ { s:\([^/]*"\)\(/[^"]*/'"${fileprefix}"'[^"]*.tar.gz\)\(.*\):https\://riverbankcomputing.com\2:p}' | grep -v '.dev')"
 		#[ -n "${pkgrel}" ] || pkgrel="$(cat "${tmpfile}" | sed -ne '/<a href="/,/"/ { s:\([^/]*"\)\(http[^"]*/'"${fileprefix}"'[^"]*.tar.gz\)\(.*\):\2:p}')"
-		pkgrel="$(echo "${myurls}" | grep -v '\.dev.*\.tar\.gz')"
+		pkgrel="$(printf -- '%s\n' "${myurls}" | grep -v '\.dev.*\.tar\.gz' | head  -1 )"
 		pkgrelfn="${pkgrel##*/}"
 		pkgrelver="${pkgrelfn#${fileprefix}-}" && pkgrelver="${pkgrelver%.tar.gz}"
 		pkgrelportver="${pkgrelver}"
@@ -49,7 +49,7 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 
 		# Detect dev package links and extract version details
 		#pkgdev="$(cat "${tmpfile}" | sed -ne '/<a href="/,/"/ { s:\([^/]*"\)\(/[^"]*/'"${fileprefix}"'[^"]*.dev[^"]*.tar.gz\)\(.*\):\2:p}')"
-		pkgdev="$(echo "${myurls}" | grep  '\.dev.*\.tar\.gz')"
+		pkgdev="$(echo "${myurls}" | grep  '\.dev.*\.tar\.gz' | head -1 )"
 		pkgdevfn="${pkgdev##*/}"
 		pkgdevver="${pkgdevfn#${fileprefix}-}" && pkgdevver="${pkgdevver%.tar.gz}"
 		pkgdevportver="${pkgdevver/.dev/_pre}"
@@ -89,7 +89,7 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 				if [ -n "${pkgrelver}" ] ; then
 					# Determine new release ebuild information
 					relnewebuild="${catpkg#*/}-${pkgrelportver}.ebuild"
-					printf -- 'New release ebuild: %s\n' "${catpkg}/${relnewebuild}"
+					printf -- '\nNew release ebuild: %s\n' "${catpkg}/${relnewebuild}"
 					if [ "${reloldebuild}" = "${relnewebuild}" ] ; then
 						printf -- 'Match, no update needed.\n'
 					else
@@ -119,7 +119,7 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 				if [ -n "${pkgdevver}" ] ; then
 					# Determine new dev ebuild information
 					devnewebuild="${catpkg#*/}-${pkgdevportver}.ebuild"
-					printf -- 'New dev ebuild: %s\n' "${catpkg}/${devnewebuild}"
+					printf -- '\nNew dev ebuild: %s\n' "${catpkg}/${devnewebuild}"
 					# If versions match, we're done
 					if [ "${devoldebuild}" = "${devnewebuild}" ] ; then
 						printf -- 'Match, no update needed.\n'
@@ -133,7 +133,7 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 						# Othewise, if there is a previous release ebuild, copy that over.
 						elif [ -n "${reloldebuild}" ] ; then
 							myupdatestr="cp \"${REPO_TOP}/${catpkg}/${reloldebuild}\" \"${REPO_TOP}/${catpkg}/${devnewebuild}\""
-							mycleanupstr="rm \"${REPO_TOP}/${catpkg}/${devoldebuild}\""
+						else
 						# Failing that, print message that manual intervention is required.
 							printf -- 'NOTICE: No viable source ebuild found to update "%s" to "%s", please create "%s"!\n' "${catpkg}" "${pkgdevportver}" "${devnewebuild}"
 						fi
@@ -144,6 +144,7 @@ pushd "${RBC_UD_TMP_DIR}" > /dev/null || die
 				fi
 
 				[ -n "${myupdatestr}" ] && UPDATE_STR="$(printf -- '%s\n%s' "${UPDATE_STR}" "${myupdatestr}")" ; myupdatestr=""
+
 				[ -n "${mycleanupstr}" ] && CLEANUP_STR="$(printf -- '%s\n%s' "${CLEANUP_STR}" "${mycleanupstr}")" ; mycleanupstr=""
 
 			popd > /dev/null || die
