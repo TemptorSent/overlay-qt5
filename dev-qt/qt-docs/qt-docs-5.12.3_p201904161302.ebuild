@@ -12,6 +12,7 @@ PV_FULL=${PV/_p/-0-}
 PV_NODOTS=$(get_version_component_range 1)$(get_version_component_range 2)$(get_version_component_range 3)
 
 # Docs for remoteobjects didn't get updated, explicitly set the version here:
+PV_RO_NODOTS="5120"
 PV_RO_FULL="5.12.0-0-201810221122"
 
 BASE_URI="https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt5_${PV_NODOTS}_src_doc_examples/qt.qt5.${PV_NODOTS}.doc"
@@ -20,7 +21,7 @@ SRC_URI="${BASE_URI}/${PV_FULL}qt-everywhere-documentation.7z
 	datavis? ( ${BASE_URI}.qtdatavis3d/${PV_FULL}qtdatavisualization-documentation.7z )
 	networkauth? ( ${BASE_URI}.qtnetworkauth/${PV_FULL}qtnetworkauth-documentation.7z )
 	purchasing? ( ${BASE_URI}.qtpurchasing/${PV_FULL}qtpurchasing-documentation.7z )
-	remoteobjects? ( ${BASE_URI}.qtremoteobjects/${PV_RO_FULL}qtremoteobjects-documentation.7z )
+	remoteobjects? ( ${BASE_URI/${PV_NODOTS}/${PV_RO_NODOTS}}.qtremoteobjects/${PV_RO_FULL}qtremoteobjects-documentation.7z )
 	script? ( ${BASE_URI}.qtscript/${PV_FULL}qtscript-documentation.7z
 		${BASE_URI}.qtscript/${PV_FULL}qtscripttools-documentation.7z )
 	virtualkeyboard? ( ${BASE_URI}.qtvirtualkeyboard/${PV_FULL}qtvirtualkeyboard-documentation.7z )
