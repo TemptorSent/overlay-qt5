@@ -21,7 +21,7 @@ SRC_URI="${BASE_URI}/${PV_FULL}qt-everywhere-documentation.7z
 	datavis? ( ${BASE_URI}.qtdatavis3d/${PV_FULL}qtdatavisualization-documentation.7z )
 	networkauth? ( ${BASE_URI}.qtnetworkauth/${PV_FULL}qtnetworkauth-documentation.7z )
 	purchasing? ( ${BASE_URI}.qtpurchasing/${PV_FULL}qtpurchasing-documentation.7z )
-	remoteobjects? ( ${BASE_URI/${PV_NODOTS}/${PV_RO_NODOTS}}.qtremoteobjects/${PV_RO_FULL}qtremoteobjects-documentation.7z )
+	remoteobjects? ( ${BASE_URI//${PV_NODOTS}/${PV_RO_NODOTS}}.qtremoteobjects/${PV_RO_FULL}qtremoteobjects-documentation.7z )
 	script? ( ${BASE_URI}.qtscript/${PV_FULL}qtscript-documentation.7z
 		${BASE_URI}.qtscript/${PV_FULL}qtscripttools-documentation.7z )
 	virtualkeyboard? ( ${BASE_URI}.qtvirtualkeyboard/${PV_FULL}qtvirtualkeyboard-documentation.7z )
