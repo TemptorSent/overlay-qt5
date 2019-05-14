@@ -84,6 +84,10 @@ PATCHES+=(
 	"${FILESDIR}/${PN}-5.12.0-nouveau-disable-gpu.patch" # bug 609752
 )
 
+# Update skia skcms to fix build errors.
+PATCHES+=( "${FILESDIR}/qtwebengine-5.12.3-skcms-update-668026c511f3d4be9447b0ae28ea7a73b5899262.patch" )
+
+
 src_prepare() {
 	use pax_kernel && PATCHES+=( "${FILESDIR}/${PN}-5.11.2-paxmark-mksnapshot.patch" )
 
