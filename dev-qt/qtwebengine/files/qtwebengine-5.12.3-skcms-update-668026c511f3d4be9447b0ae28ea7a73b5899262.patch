@@ -1,0 +1,2928 @@
+diff --git a/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.cc b/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.cc
+index 4ba9dbf..3d97dd1 100644
+--- a/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.cc
++++ b/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.cc
+@@ -13,6 +13,25 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#if defined(__ARM_NEON)
++    #include <arm_neon.h>
++#elif defined(__SSE__)
++    #include <immintrin.h>
++
++    #if defined(__clang__)
++        // That #include <immintrin.h> is usually enough, but Clang's headers
++        // "helpfully" skip including the whole kitchen sink when _MSC_VER is
++        // defined, because lots of programs on Windows would include that and
++        // it'd be a lot slower.  But we want all those headers included so we
++        // can use their features after runtime checks later.
++        #include <smmintrin.h>
++        #include <avxintrin.h>
++        #include <avx2intrin.h>
++        #include <avx512fintrin.h>
++        #include <avx512dqintrin.h>
++    #endif
++#endif
++
+ // sizeof(x) will return size_t, which is 32-bit on some machines and 64-bit on others.
+ // We have better testing on 64-bit machines, so force 32-bit machines to behave like 64-bit.
+ //
+@@ -714,7 +733,10 @@ static bool read_tag_mab(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xy
+     return true;
+ }
+ 
+-static int fit_linear(const skcms_Curve* curve, int N, float tol, float* c, float* d, float* f) {
++// If you pass f, we'll fit a possibly-non-zero value for *f.
++// If you pass nullptr, we'll assume you want *f to be treated as zero.
++static int fit_linear(const skcms_Curve* curve, int N, float tol,
++                      float* c, float* d, float* f = nullptr) {
+     assert(N > 1);
+     // We iteratively fit the first points to the TF's linear piece.
+     // We want the cx + f line to pass through the first and last points we fit exactly.
+@@ -729,7 +751,14 @@ static int fit_linear(const skcms_Curve* curve, int N, float tol, float* c, floa
+     const float dx = 1.0f / (N - 1);
+ 
+     int lin_points = 1;
+-    *f = eval_curve(curve, 0);
++
++    float f_zero = 0.0f;
++    if (f) {
++        *f = eval_curve(curve, 0);
++    } else {
++        f = &f_zero;
++    }
++
+ 
+     float slope_min = -INFINITY_;
+     float slope_max = +INFINITY_;
+@@ -791,7 +820,7 @@ static bool read_a2b(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xyz) {
+         if (curve && curve->table_entries && curve->table_entries <= (uint32_t)INT_MAX) {
+             int N = (int)curve->table_entries;
+ 
+-            float c,d,f;
++            float c = 0.0f, d = 0.0f, f = 0.0f;
+             if (N == fit_linear(curve, N, 1.0f/(2*N), &c,&d,&f)
+                 && c == 1.0f
+                 && f == 0.0f) {
+@@ -990,10 +1019,10 @@ const skcms_ICCProfile* skcms_sRGB_profile() {
+         {
+             0,
+             {
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
+             },
+             {0,0,0,0},
+             nullptr,
+@@ -1001,21 +1030,21 @@ const skcms_ICCProfile* skcms_sRGB_profile() {
+ 
+             0,
+             {
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
+             },
+             {{
+-                { 1,0,0,0 },
+-                { 0,1,0,0 },
+-                { 0,0,1,0 },
++                { 0,0,0,0 },
++                { 0,0,0,0 },
++                { 0,0,0,0 },
+             }},
+ 
+             0,
+             {
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
+             },
+         },
+     };
+@@ -1050,10 +1079,10 @@ const skcms_ICCProfile* skcms_XYZD50_profile() {
+         {
+             0,
+             {
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
+             },
+             {0,0,0,0},
+             nullptr,
+@@ -1061,21 +1090,21 @@ const skcms_ICCProfile* skcms_XYZD50_profile() {
+ 
+             0,
+             {
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
+             },
+             {{
+-                { 1,0,0,0 },
+-                { 0,1,0,0 },
+-                { 0,0,1,0 },
++                { 0,0,0,0 },
++                { 0,0,0,0 },
++                { 0,0,0,0 },
+             }},
+ 
+             0,
+             {
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
+-                {{0, {1,1, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
++                {{0, {0,0, 0,0,0,0,0}}},
+             },
+         },
+     };
+@@ -1089,7 +1118,7 @@ const skcms_TransferFunction* skcms_sRGB_TransferFunction() {
+ 
+ const skcms_TransferFunction* skcms_sRGB_Inverse_TransferFunction() {
+     static const skcms_TransferFunction sRGB_inv =
+-        { (float)(1/2.4), 1.137119f, 0, 12.92f, 0.0031308f, -0.055f, 0 };
++        {0.416666657f, 1.137283325f, -0.0f, 12.920000076f, 0.003130805f, -0.054969788f, -0.0f};
+     return &sRGB_inv;
+ }
+ 
+@@ -1118,6 +1147,11 @@ const uint8_t skcms_252_random_bytes[] = {
+ };
+ 
+ bool skcms_ApproximatelyEqualProfiles(const skcms_ICCProfile* A, const skcms_ICCProfile* B) {
++    // Test for exactly equal profiles first.
++    if (A == B || 0 == memcmp(A,B, sizeof(skcms_ICCProfile))) {
++        return true;
++    }
++
+     // For now this is the essentially the same strategy we use in test_only.c
+     // for our skcms_Transform() smoke tests:
+     //    1) transform A to XYZD50
+@@ -1125,7 +1159,7 @@ bool skcms_ApproximatelyEqualProfiles(const skcms_ICCProfile* A, const skcms_ICC
+     //    3) return true if they're similar enough
+     // Our current criterion in 3) is maximum 1 bit error per XYZD50 byte.
+ 
+-    // Here are 252 of a random shuffle of all possible bytes.
++    // skcms_252_random_bytes are 252 of a random shuffle of all possible bytes.
+     // 252 is evenly divisible by 3 and 4.  Only 192, 10, 241, and 43 are missing.
+ 
+     if (A->data_color_space != B->data_color_space) {
+@@ -1133,6 +1167,7 @@ bool skcms_ApproximatelyEqualProfiles(const skcms_ICCProfile* A, const skcms_ICC
+     }
+ 
+     // Interpret as RGB_888 if data color space is RGB or GRAY, RGBA_8888 if CMYK.
++    // TODO: working with RGBA_8888 either way is probably fastest.
+     skcms_PixelFormat fmt = skcms_PixelFormat_RGB_888;
+     size_t npixels = 84;
+     if (A->data_color_space == skcms_Signature_CMYK) {
+@@ -1140,6 +1175,8 @@ bool skcms_ApproximatelyEqualProfiles(const skcms_ICCProfile* A, const skcms_ICC
+         npixels = 63;
+     }
+ 
++    // TODO: if A or B is a known profile (skcms_sRGB_profile, skcms_XYZD50_profile),
++    // use pre-canned results and skip that skcms_Transform() call?
+     uint8_t dstA[252],
+             dstB[252];
+     if (!skcms_Transform(
+@@ -1155,6 +1192,7 @@ bool skcms_ApproximatelyEqualProfiles(const skcms_ICCProfile* A, const skcms_ICC
+         return false;
+     }
+ 
++    // TODO: make sure this final check has reasonable codegen.
+     for (size_t i = 0; i < 252; i++) {
+         if (abs((int)dstA[i] - (int)dstB[i]) > 1) {
+             return false;
+@@ -1378,80 +1416,67 @@ float skcms_TransferFunction_eval(const skcms_TransferFunction* tf, float x) {
+                              : powf_(tf->a * x + tf->b, tf->g) + tf->e);
+ }
+ 
+-// TODO: Adjust logic here? This still assumes that purely linear inputs will have D > 1, which
+-// we never generate. It also emits inverted linear using the same formulation. Standardize on
+-// G == 1 here, too?
++#if defined(__clang__)
++    [[clang::no_sanitize("float-divide-by-zero")]]  // Checked for by tf_is_valid() on the way out.
++#endif
+ bool skcms_TransferFunction_invert(const skcms_TransferFunction* src, skcms_TransferFunction* dst) {
+-    // Original equation is:       y = (ax + b)^g + e   for x >= d
+-    //                             y = cx + f           otherwise
+-    //
+-    // so 1st inverse is:          (y - e)^(1/g) = ax + b
+-    //                             x = ((y - e)^(1/g) - b) / a
+-    //
+-    // which can be re-written as: x = (1/a)(y - e)^(1/g) - b/a
+-    //                             x = ((1/a)^g)^(1/g) * (y - e)^(1/g) - b/a
+-    //                             x = ([(1/a)^g]y + [-((1/a)^g)e]) ^ [1/g] + [-b/a]
+-    //
+-    // and 2nd inverse is:         x = (y - f) / c
+-    // which can be re-written as: x = [1/c]y + [-f/c]
+-    //
+-    // and now both can be expressed in terms of the same parametric form as the
+-    // original - parameters are enclosed in square brackets.
+-    skcms_TransferFunction tf_inv = { 0, 0, 0, 0, 0, 0, 0 };
+-
+-    // This rejects obviously malformed inputs, as well as decreasing functions
+     if (!tf_is_valid(src)) {
+         return false;
+     }
+ 
+-    // There are additional constraints to be invertible
+-    bool has_nonlinear = (src->d <= 1);
+-    bool has_linear = (src->d > 0);
++    // We're inverting this function, solving for x in terms of y.
++    //   y = (cx + f)         x < d
++    //       (ax + b)^g + e   x ≥ d
++    // The inverse of this function can be expressed in the same piecewise form.
++    skcms_TransferFunction inv = {0,0,0,0,0,0,0};
+ 
+-    // Is the linear section not invertible?
+-    if (has_linear && src->c == 0) {
++    // We'll start by finding the new threshold inv.d.
++    // In principle we should be able to find that by solving for y at x=d from either side.
++    // (If those two d values aren't the same, it's a discontinuous transfer function.)
++    float d_l =       src->c * src->d + src->f,
++          d_r = powf_(src->a * src->d + src->b, src->g) + src->e;
++    if (fabsf_(d_l - d_r) > 1/512.0f) {
+         return false;
+     }
++    inv.d = d_l;  // TODO(mtklein): better in practice to choose d_r?
+ 
+-    // Is the nonlinear section not invertible?
+-    if (has_nonlinear && (src->a == 0 || src->g == 0)) {
+-        return false;
+-    }
+-
+-    // If both segments are present, they need to line up
+-    if (has_linear && has_nonlinear) {
+-        float l_at_d = src->c * src->d + src->f;
+-        float n_at_d = powf_(src->a * src->d + src->b, src->g) + src->e;
+-        if (fabsf_(l_at_d - n_at_d) > (1 / 512.0f)) {
+-            return false;
+-        }
+-    }
+-
+-    // Invert linear segment
+-    if (has_linear) {
+-        tf_inv.c = 1.0f / src->c;
+-        tf_inv.f = -src->f / src->c;
++    // When d=0, the linear section collapses to a point.  We leave c,d,f all zero in that case.
++    if (inv.d > 0) {
++        // Inverting the linear section is pretty straightfoward:
++        //        y       = cx + f
++        //        y - f   = cx
++        //   (1/c)y - f/c = x
++        inv.c =    1.0f/src->c;
++        inv.f = -src->f/src->c;
+     }
+ 
+-    // Invert nonlinear segment
+-    if (has_nonlinear) {
+-        tf_inv.g = 1.0f / src->g;
+-        tf_inv.a = powf_(1.0f / src->a, src->g);
+-        tf_inv.b = -tf_inv.a * src->e;
+-        tf_inv.e = -src->b / src->a;
+-    }
+-
+-    if (!has_linear) {
+-        tf_inv.d = 0;
+-    } else if (!has_nonlinear) {
+-        // Any value larger than 1 works
+-        tf_inv.d = 2.0f;
+-    } else {
+-        tf_inv.d = src->c * src->d + src->f;
+-    }
+-
+-    *dst = tf_inv;
+-    return true;
++    // The interesting part is inverting the nonlinear section:
++    //         y                = (ax + b)^g + e.
++    //         y - e            = (ax + b)^g
++    //        (y - e)^1/g       =  ax + b
++    //        (y - e)^1/g - b   =  ax
++    //   (1/a)(y - e)^1/g - b/a =   x
++    //
++    // To make that fit our form, we need to move the (1/a) term inside the exponentiation:
++    //   let k = (1/a)^g
++    //   (1/a)( y -  e)^1/g - b/a = x
++    //        (ky - ke)^1/g - b/a = x
++
++    float k = powf_(src->a, -src->g);  // (1/a)^g == a^-g
++    inv.g = 1.0f / src->g;
++    inv.a = k;
++    inv.b = -k * src->e;
++    inv.e = -src->b / src->a;
++
++    // Now in principle we're done.
++    // But to preserve the valuable invariant inv(src(1.0f)) == 1.0f,
++    // we'll tweak e.  These two values should be close to each other,
++    // just down to numerical precision issues, especially from powf_.
++    float s = powf_(src->a + src->b, src->g) + src->e;
++    inv.e = 1.0f - powf_(inv.a * s + inv.b, inv.g);
++
++    *dst = inv;
++    return tf_is_valid(dst);
+ }
+ 
+ // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+@@ -1671,7 +1696,10 @@ bool skcms_ApproximateCurve(const skcms_Curve* curve,
+     for (int t = 0; t < ARRAY_COUNT(kTolerances); t++) {
+         skcms_TransferFunction tf,
+                                tf_inv;
+-        int L = fit_linear(curve, N, kTolerances[t], &tf.c, &tf.d, &tf.f);
++
++        // It's problematic to fit curves with non-zero f, so always force it to zero explicitly.
++        tf.f = 0.0f;
++        int L = fit_linear(curve, N, kTolerances[t], &tf.c, &tf.d);
+ 
+         if (L == N) {
+             // If the entire data set was linear, move the coefficients to the nonlinear portion
+@@ -1694,7 +1722,7 @@ bool skcms_ApproximateCurve(const skcms_Curve* curve,
+             int mid = (L + N) / 2;
+             float mid_x = mid / (N - 1.0f);
+             float mid_y = eval_curve(curve, mid_x);
+-            tf.g = log2f_(mid_y) / log2f_(mid_x);;
++            tf.g = log2f_(mid_y) / log2f_(mid_x);
+             tf.a = 1;
+             tf.b = 0;
+             tf.e =    tf.c*tf.d + tf.f
+@@ -1735,17 +1763,18 @@ bool skcms_ApproximateCurve(const skcms_Curve* curve,
+ // ~~~~ Impl. of skcms_Transform() ~~~~
+ 
+ typedef enum {
+-    Op_noop,
+-
+     Op_load_a8,
+     Op_load_g8,
++    Op_load_8888_palette8,
+     Op_load_4444,
+     Op_load_565,
+     Op_load_888,
+     Op_load_8888,
+     Op_load_1010102,
+-    Op_load_161616,
+-    Op_load_16161616,
++    Op_load_161616LE,
++    Op_load_16161616LE,
++    Op_load_161616BE,
++    Op_load_16161616BE,
+     Op_load_hhh,
+     Op_load_hhhh,
+     Op_load_fff,
+@@ -1766,24 +1795,12 @@ typedef enum {
+     Op_tf_b,
+     Op_tf_a,
+ 
+-    Op_table_8_r,
+-    Op_table_8_g,
+-    Op_table_8_b,
+-    Op_table_8_a,
+-
+-    Op_table_16_r,
+-    Op_table_16_g,
+-    Op_table_16_b,
+-    Op_table_16_a,
+-
+-    Op_clut_1D_8,
+-    Op_clut_1D_16,
+-    Op_clut_2D_8,
+-    Op_clut_2D_16,
+-    Op_clut_3D_8,
+-    Op_clut_3D_16,
+-    Op_clut_4D_8,
+-    Op_clut_4D_16,
++    Op_table_r,
++    Op_table_g,
++    Op_table_b,
++    Op_table_a,
++
++    Op_clut,
+ 
+     Op_store_a8,
+     Op_store_g8,
+@@ -1792,234 +1809,195 @@ typedef enum {
+     Op_store_888,
+     Op_store_8888,
+     Op_store_1010102,
+-    Op_store_161616,
+-    Op_store_16161616,
++    Op_store_161616LE,
++    Op_store_16161616LE,
++    Op_store_161616BE,
++    Op_store_16161616BE,
+     Op_store_hhh,
+     Op_store_hhhh,
+     Op_store_fff,
+     Op_store_ffff,
+ } Op;
+ 
+-// Without this wasm would try to use the N=4 128-bit vector code path,
+-// which while ideal, causes tons of compiler problems.  This would be
+-// a good thing to revisit as emcc matures (currently 1.38.5).
+-#if 1 && defined(__EMSCRIPTEN_major__)
+-    #if !defined(SKCMS_PORTABLE)
+-        #define  SKCMS_PORTABLE
+-    #endif
+-#endif
+-
+ #if defined(__clang__)
+-    typedef float    __attribute__((ext_vector_type(4)))   Fx4;
+-    typedef int32_t  __attribute__((ext_vector_type(4))) I32x4;
+-    typedef uint64_t __attribute__((ext_vector_type(4))) U64x4;
+-    typedef uint32_t __attribute__((ext_vector_type(4))) U32x4;
+-    typedef uint16_t __attribute__((ext_vector_type(4))) U16x4;
+-    typedef uint8_t  __attribute__((ext_vector_type(4)))  U8x4;
+-
+-    typedef float    __attribute__((ext_vector_type(8)))   Fx8;
+-    typedef int32_t  __attribute__((ext_vector_type(8))) I32x8;
+-    typedef uint64_t __attribute__((ext_vector_type(8))) U64x8;
+-    typedef uint32_t __attribute__((ext_vector_type(8))) U32x8;
+-    typedef uint16_t __attribute__((ext_vector_type(8))) U16x8;
+-    typedef uint8_t  __attribute__((ext_vector_type(8)))  U8x8;
+-
+-    typedef float    __attribute__((ext_vector_type(16)))   Fx16;
+-    typedef int32_t  __attribute__((ext_vector_type(16))) I32x16;
+-    typedef uint64_t __attribute__((ext_vector_type(16))) U64x16;
+-    typedef uint32_t __attribute__((ext_vector_type(16))) U32x16;
+-    typedef uint16_t __attribute__((ext_vector_type(16))) U16x16;
+-    typedef uint8_t  __attribute__((ext_vector_type(16)))  U8x16;
++    template <int N, typename T> using Vec = T __attribute__((ext_vector_type(N)));
+ #elif defined(__GNUC__)
+-    typedef float    __attribute__((vector_size(16)))   Fx4;
+-    typedef int32_t  __attribute__((vector_size(16))) I32x4;
+-    typedef uint64_t __attribute__((vector_size(32))) U64x4;
+-    typedef uint32_t __attribute__((vector_size(16))) U32x4;
+-    typedef uint16_t __attribute__((vector_size( 8))) U16x4;
+-    typedef uint8_t  __attribute__((vector_size( 4)))  U8x4;
+-
+-    typedef float    __attribute__((vector_size(32)))   Fx8;
+-    typedef int32_t  __attribute__((vector_size(32))) I32x8;
+-    typedef uint64_t __attribute__((vector_size(64))) U64x8;
+-    typedef uint32_t __attribute__((vector_size(32))) U32x8;
+-    typedef uint16_t __attribute__((vector_size(16))) U16x8;
+-    typedef uint8_t  __attribute__((vector_size( 8)))  U8x8;
+-
+-    typedef float    __attribute__((vector_size( 64)))   Fx16;
+-    typedef int32_t  __attribute__((vector_size( 64))) I32x16;
+-    typedef uint64_t __attribute__((vector_size(128))) U64x16;
+-    typedef uint32_t __attribute__((vector_size( 64))) U32x16;
+-    typedef uint16_t __attribute__((vector_size( 32))) U16x16;
+-    typedef uint8_t  __attribute__((vector_size( 16)))  U8x16;
++    // For some reason GCC accepts this nonsense, but not the more straightforward version,
++    //   template <int N, typename T> using Vec = T __attribute__((vector_size(N*sizeof(T))));
++    template <int N, typename T>
++    struct VecHelper { typedef T __attribute__((vector_size(N*sizeof(T)))) V; };
++
++    template <int N, typename T> using Vec = typename VecHelper<N,T>::V;
+ #endif
+ 
+ // First, instantiate our default exec_ops() implementation using the default compiliation target.
+ 
+-#if defined(SKCMS_PORTABLE) || defined(__INTEL_COMPILER) || !(defined(__clang__) || defined(__GNUC__))
++namespace baseline {
++#if defined(SKCMS_PORTABLE) || !(defined(__clang__) || defined(__GNUC__)) \
++                            || (defined(__EMSCRIPTEN_major__) && !defined(__wasm_simd128__))
+     #define N 1
+-
+-    #define F   float
+-    #define U64 uint64_t
+-    #define U32 uint32_t
+-    #define I32 int32_t
+-    #define U16 uint16_t
+-    #define U8  uint8_t
+-
+-    #define F0 0.0f
+-    #define F1 1.0f
++    using F   = float;
++    using U64 = uint64_t;
++    using U32 = uint32_t;
++    using I32 = int32_t;
++    using U16 = uint16_t;
++    using U8  = uint8_t;
+ 
+ #elif defined(__AVX512F__)
+     #define N 16
+-
+-    #define F     Fx16
+-    #define U64 U64x16
+-    #define U32 U32x16
+-    #define I32 I32x16
+-    #define U16 U16x16
+-    #define U8   U8x16
+-
+-    #define F0 F{0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}
+-    #define F1 F{1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1}
++    using   F = Vec<N,float>;
++    using I32 = Vec<N,int32_t>;
++    using U64 = Vec<N,uint64_t>;
++    using U32 = Vec<N,uint32_t>;
++    using U16 = Vec<N,uint16_t>;
++    using  U8 = Vec<N,uint8_t>;
+ #elif defined(__AVX__)
+     #define N 8
+-
+-    #define F     Fx8
+-    #define U64 U64x8
+-    #define U32 U32x8
+-    #define I32 I32x8
+-    #define U16 U16x8
+-    #define U8   U8x8
+-
+-    #define F0 F{0,0,0,0, 0,0,0,0}
+-    #define F1 F{1,1,1,1, 1,1,1,1}
++    using   F = Vec<N,float>;
++    using I32 = Vec<N,int32_t>;
++    using U64 = Vec<N,uint64_t>;
++    using U32 = Vec<N,uint32_t>;
++    using U16 = Vec<N,uint16_t>;
++    using  U8 = Vec<N,uint8_t>;
+ #else
+     #define N 4
+-
+-    #define F     Fx4
+-    #define U64 U64x4
+-    #define U32 U32x4
+-    #define I32 I32x4
+-    #define U16 U16x4
+-    #define U8   U8x4
+-
+-    #define F0 F{0,0,0,0}
+-    #define F1 F{1,1,1,1}
++    using   F = Vec<N,float>;
++    using I32 = Vec<N,int32_t>;
++    using U64 = Vec<N,uint64_t>;
++    using U32 = Vec<N,uint32_t>;
++    using U16 = Vec<N,uint16_t>;
++    using  U8 = Vec<N,uint8_t>;
+ #endif
+ 
+-#define NS(id) id
+-#define ATTR
+     #include "src/Transform_inl.h"
+-#undef N
+-#undef F
+-#undef U64
+-#undef U32
+-#undef I32
+-#undef U16
+-#undef U8
+-#undef F0
+-#undef F1
+-#undef NS
+-#undef ATTR
++    #undef N
++}
+ 
+ // Now, instantiate any other versions of run_program() we may want for runtime detection.
+-#if !defined(SKCMS_PORTABLE) && (defined(__clang__) || defined(__GNUC__)) \
+-        && defined(__x86_64__) && !defined(__AVX2__) && !defined(__INTEL_COMPILER)
+-    #define N 8
+-    #define F     Fx8
+-    #define U64 U64x8
+-    #define U32 U32x8
+-    #define I32 I32x8
+-    #define U16 U16x8
+-    #define U8   U8x8
+-    #define F0 F{0,0,0,0, 0,0,0,0}
+-    #define F1 F{1,1,1,1, 1,1,1,1}
+-
+-    #define NS(id) id ## _hsw
+-    #define ATTR __attribute__((target("avx2,f16c")))
+-
+-    // We check these guards to see if we have support for these features.
+-    // They're likely _not_ defined here in our baseline build config.
+-    #ifndef __AVX__
+-        #define __AVX__ 1
+-        #define UNDEF_AVX
+-    #endif
+-    #ifndef __F16C__
+-        #define __F16C__ 1
+-        #define UNDEF_F16C
+-    #endif
+-    #ifndef __AVX2__
+-        #define __AVX2__ 1
+-        #define UNDEF_AVX2
+-    #endif
++#if !defined(SKCMS_PORTABLE) &&                           \
++        (( defined(__clang__) && __clang_major__ >= 5) || \
++         (!defined(__clang__) && defined(__GNUC__)))      \
++     && defined(__x86_64__)
++
++    #if !defined(__AVX2__)
++        #if defined(__clang__)
++            #pragma clang attribute push(__attribute__((target("avx2,f16c"))), apply_to=function)
++        #elif defined(__GNUC__)
++            #pragma GCC push_options
++            #pragma GCC target("avx2,f16c")
++        #endif
++
++        namespace hsw {
++            #define USING_AVX
++            #define USING_AVX_F16C
++            #define USING_AVX2
++            #define N 8
++            using   F = Vec<N,float>;
++            using I32 = Vec<N,int32_t>;
++            using U64 = Vec<N,uint64_t>;
++            using U32 = Vec<N,uint32_t>;
++            using U16 = Vec<N,uint16_t>;
++            using  U8 = Vec<N,uint8_t>;
++
++            #include "src/Transform_inl.h"
++
++            // src/Transform_inl.h will undefine USING_* for us.
++            #undef N
++        }
+ 
+-    #include "src/Transform_inl.h"
++        #if defined(__clang__)
++            #pragma clang attribute pop
++        #elif defined(__GNUC__)
++            #pragma GCC pop_options
++        #endif
+ 
+-    #undef N
+-    #undef F
+-    #undef U64
+-    #undef U32
+-    #undef I32
+-    #undef U16
+-    #undef U8
+-    #undef F0
+-    #undef F1
+-    #undef NS
+-    #undef ATTR
+-
+-    #ifdef UNDEF_AVX
+-        #undef __AVX__
+-        #undef UNDEF_AVX
+-    #endif
+-    #ifdef UNDEF_F16C
+-        #undef __F16C__
+-        #undef UNDEF_F16C
+-    #endif
+-    #ifdef UNDEF_AVX2
+-        #undef __AVX2__
+-        #undef UNDEF_AVX2
++        #define TEST_FOR_HSW
+     #endif
+ 
+-    #define TEST_FOR_HSW
+-
+-    static bool hsw_ok() {
+-        static const bool ok = []{
+-            // See http://www.sandpile.org/x86/cpuid.htm
+-
+-            // First, a basic cpuid(1).
+-            uint32_t eax, ebx, ecx, edx;
+-            __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+-                                         : "0"(1), "2"(0));
+-
+-            // Sanity check for prerequisites.
+-            if ((edx & (1<<25)) != (1<<25)) { return false; }   // SSE
+-            if ((edx & (1<<26)) != (1<<26)) { return false; }   // SSE2
+-            if ((ecx & (1<< 0)) != (1<< 0)) { return false; }   // SSE3
+-            if ((ecx & (1<< 9)) != (1<< 9)) { return false; }   // SSSE3
+-            if ((ecx & (1<<19)) != (1<<19)) { return false; }   // SSE4.1
+-            if ((ecx & (1<<20)) != (1<<20)) { return false; }   // SSE4.2
+-
+-            if ((ecx & (3<<26)) != (3<<26)) { return false; }   // XSAVE + OSXSAVE
+-
+-            {
+-                uint32_t eax_xgetbv, edx_xgetbv;
+-                __asm__ __volatile__("xgetbv" : "=a"(eax_xgetbv), "=d"(edx_xgetbv) : "c"(0));
+-                if ((eax_xgetbv & (3<<1)) != (3<<1)) { return false; }  // XMM+YMM state saved?
+-            }
+-
+-            if ((ecx & (1<<28)) != (1<<28)) { return false; }   // AVX
+-            if ((ecx & (1<<29)) != (1<<29)) { return false; }   // F16C
+-            if ((ecx & (1<<12)) != (1<<12)) { return false; }   // FMA  (TODO: not currently used)
++    #if !defined(__AVX512F__)
++        #if defined(__clang__)
++            #pragma clang attribute push(__attribute__((target("avx512f,avx512dq,avx512cd,avx512bw,avx512vl"))), apply_to=function)
++        #elif defined(__GNUC__)
++            #pragma GCC push_options
++            #pragma GCC target("avx512f,avx512dq,avx512cd,avx512bw,avx512vl")
++        #endif
++
++        namespace skx {
++            #define USING_AVX512F
++            #define N 16
++            using   F = Vec<N,float>;
++            using I32 = Vec<N,int32_t>;
++            using U64 = Vec<N,uint64_t>;
++            using U32 = Vec<N,uint32_t>;
++            using U16 = Vec<N,uint16_t>;
++            using  U8 = Vec<N,uint8_t>;
++
++            #include "src/Transform_inl.h"
++
++            // src/Transform_inl.h will undefine USING_* for us.
++            #undef N
++        }
+ 
+-            // Call cpuid(7) to check for our final AVX2 feature bit!
+-            __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+-                                         : "0"(7), "2"(0));
+-            if ((ebx & (1<< 5)) != (1<< 5)) { return false; }   // AVX2
++        #if defined(__clang__)
++            #pragma clang attribute pop
++        #elif defined(__GNUC__)
++            #pragma GCC pop_options
++        #endif
+ 
+-            return true;
+-        }();
++        #define TEST_FOR_SKX
++    #endif
+ 
+-        return ok;
+-    }
++    #if defined(TEST_FOR_HSW) || defined(TEST_FOR_SKX)
++        enum class CpuType { None, HSW, SKX };
++        static CpuType cpu_type() {
++            static const CpuType type = []{
++                // See http://www.sandpile.org/x86/cpuid.htm
++
++                // First, a basic cpuid(1) lets us check prerequisites for HSW, SKX.
++                uint32_t eax, ebx, ecx, edx;
++                __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
++                                             : "0"(1), "2"(0));
++                if ((edx & (1u<<25)) &&  // SSE
++                    (edx & (1u<<26)) &&  // SSE2
++                    (ecx & (1u<< 0)) &&  // SSE3
++                    (ecx & (1u<< 9)) &&  // SSSE3
++                    (ecx & (1u<<12)) &&  // FMA (N.B. not used, avoided even)
++                    (ecx & (1u<<19)) &&  // SSE4.1
++                    (ecx & (1u<<20)) &&  // SSE4.2
++                    (ecx & (1u<<26)) &&  // XSAVE
++                    (ecx & (1u<<27)) &&  // OSXSAVE
++                    (ecx & (1u<<28)) &&  // AVX
++                    (ecx & (1u<<29))) {  // F16C
++
++                    // Call cpuid(7) to check for AVX2 and AVX-512 bits.
++                    __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
++                                                 : "0"(7), "2"(0));
++                    // eax from xgetbv(0) will tell us whether XMM, YMM, and ZMM state is saved.
++                    uint32_t xcr0, dont_need_edx;
++                    __asm__ __volatile__("xgetbv" : "=a"(xcr0), "=d"(dont_need_edx) : "c"(0));
++
++                    if ((xcr0 & (1u<<1)) &&  // XMM register state saved?
++                        (xcr0 & (1u<<2)) &&  // YMM register state saved?
++                        (ebx  & (1u<<5))) {  // AVX2
++                        // At this point we're at least HSW.  Continue checking for SKX.
++                        if ((xcr0 & (1u<< 5)) && // Opmasks state saved?
++                            (xcr0 & (1u<< 6)) && // First 16 ZMM registers saved?
++                            (xcr0 & (1u<< 7)) && // High 16 ZMM registers saved?
++                            (ebx  & (1u<<16)) && // AVX512F
++                            (ebx  & (1u<<17)) && // AVX512DQ
++                            (ebx  & (1u<<28)) && // AVX512CD
++                            (ebx  & (1u<<30)) && // AVX512BW
++                            (ebx  & (1u<<31))) { // AVX512VL
++                            return CpuType::SKX;
++                        }
++                        return CpuType::HSW;
++                    }
++                }
++                return CpuType::None;
++            }();
++            return type;
++        }
++    #endif
+ 
+ #endif
+ 
+@@ -2034,42 +2012,44 @@ typedef struct {
+ } OpAndArg;
+ 
+ static OpAndArg select_curve_op(const skcms_Curve* curve, int channel) {
+-    static const struct { Op parametric, table_8, table_16; } ops[] = {
+-        { Op_tf_r, Op_table_8_r, Op_table_16_r },
+-        { Op_tf_g, Op_table_8_g, Op_table_16_g },
+-        { Op_tf_b, Op_table_8_b, Op_table_16_b },
+-        { Op_tf_a, Op_table_8_a, Op_table_16_a },
++    static const struct { Op parametric, table; } ops[] = {
++        { Op_tf_r, Op_table_r },
++        { Op_tf_g, Op_table_g },
++        { Op_tf_b, Op_table_b },
++        { Op_tf_a, Op_table_a },
+     };
+ 
++    const OpAndArg noop = { Op_load_a8/*doesn't matter*/, nullptr };
++
+     if (curve->table_entries == 0) {
+         return is_identity_tf(&curve->parametric)
+-            ? OpAndArg{ Op_noop, nullptr }
++            ? noop
+             : OpAndArg{ ops[channel].parametric, &curve->parametric };
+-    } else if (curve->table_8) {
+-        return OpAndArg{ ops[channel].table_8,  curve };
+-    } else if (curve->table_16) {
+-        return OpAndArg{ ops[channel].table_16, curve };
+     }
+ 
+-    assert(false);
+-    return OpAndArg{Op_noop,nullptr};
++    return OpAndArg{ ops[channel].table, curve };
+ }
+ 
+ static size_t bytes_per_pixel(skcms_PixelFormat fmt) {
+     switch (fmt >> 1) {   // ignore rgb/bgr
+-        case skcms_PixelFormat_A_8           >> 1: return  1;
+-        case skcms_PixelFormat_G_8           >> 1: return  1;
+-        case skcms_PixelFormat_ABGR_4444     >> 1: return  2;
+-        case skcms_PixelFormat_RGB_565       >> 1: return  2;
+-        case skcms_PixelFormat_RGB_888       >> 1: return  3;
+-        case skcms_PixelFormat_RGBA_8888     >> 1: return  4;
+-        case skcms_PixelFormat_RGBA_1010102  >> 1: return  4;
+-        case skcms_PixelFormat_RGB_161616    >> 1: return  6;
+-        case skcms_PixelFormat_RGBA_16161616 >> 1: return  8;
+-        case skcms_PixelFormat_RGB_hhh       >> 1: return  6;
+-        case skcms_PixelFormat_RGBA_hhhh     >> 1: return  8;
+-        case skcms_PixelFormat_RGB_fff       >> 1: return 12;
+-        case skcms_PixelFormat_RGBA_ffff     >> 1: return 16;
++        case skcms_PixelFormat_A_8                >> 1: return  1;
++        case skcms_PixelFormat_G_8                >> 1: return  1;
++        case skcms_PixelFormat_RGBA_8888_Palette8 >> 1: return  1;
++        case skcms_PixelFormat_ABGR_4444          >> 1: return  2;
++        case skcms_PixelFormat_RGB_565            >> 1: return  2;
++        case skcms_PixelFormat_RGB_888            >> 1: return  3;
++        case skcms_PixelFormat_RGBA_8888          >> 1: return  4;
++        case skcms_PixelFormat_RGBA_1010102       >> 1: return  4;
++        case skcms_PixelFormat_RGB_161616LE       >> 1: return  6;
++        case skcms_PixelFormat_RGBA_16161616LE    >> 1: return  8;
++        case skcms_PixelFormat_RGB_161616BE       >> 1: return  6;
++        case skcms_PixelFormat_RGBA_16161616BE    >> 1: return  8;
++        case skcms_PixelFormat_RGB_hhh_Norm       >> 1: return  6;
++        case skcms_PixelFormat_RGBA_hhhh_Norm     >> 1: return  8;
++        case skcms_PixelFormat_RGB_hhh            >> 1: return  6;
++        case skcms_PixelFormat_RGBA_hhhh          >> 1: return  8;
++        case skcms_PixelFormat_RGB_fff            >> 1: return 12;
++        case skcms_PixelFormat_RGBA_ffff          >> 1: return 16;
+     }
+     assert(false);
+     return 0;
+@@ -2101,7 +2081,22 @@ bool skcms_Transform(const void*             src,
+                      skcms_PixelFormat       dstFmt,
+                      skcms_AlphaFormat       dstAlpha,
+                      const skcms_ICCProfile* dstProfile,
+-                     size_t                  nz) {
++                     size_t                  npixels) {
++    return skcms_TransformWithPalette(src, srcFmt, srcAlpha, srcProfile,
++                                      dst, dstFmt, dstAlpha, dstProfile,
++                                      npixels, nullptr);
++}
++
++bool skcms_TransformWithPalette(const void*             src,
++                                skcms_PixelFormat       srcFmt,
++                                skcms_AlphaFormat       srcAlpha,
++                                const skcms_ICCProfile* srcProfile,
++                                void*                   dst,
++                                skcms_PixelFormat       dstFmt,
++                                skcms_AlphaFormat       dstAlpha,
++                                const skcms_ICCProfile* dstProfile,
++                                size_t                  nz,
++                                const void*             palette) {
+     const size_t dst_bpp = bytes_per_pixel(dstFmt),
+                  src_bpp = bytes_per_pixel(srcFmt);
+     // Let's just refuse if the request is absurdly big.
+@@ -2119,12 +2114,15 @@ bool skcms_Transform(const void*             src,
+     }
+ 
+     // We can't transform in place unless the PixelFormats are the same size.
+-    if (dst == src && (dstFmt >> 1) != (srcFmt >> 1)) {
++    if (dst == src && dst_bpp != src_bpp) {
+         return false;
+     }
+-    // TODO: this check lazilly disallows U16 <-> F16, but that would actually be fine.
+     // TODO: more careful alias rejection (like, dst == src + 1)?
+ 
++    if (needs_palette(srcFmt) && !palette) {
++        return false;
++    }
++
+     Op          program  [32];
+     const void* arguments[32];
+ 
+@@ -2136,19 +2134,31 @@ bool skcms_Transform(const void*             src,
+ 
+     switch (srcFmt >> 1) {
+         default: return false;
+-        case skcms_PixelFormat_A_8           >> 1: *ops++ = Op_load_a8;       break;
+-        case skcms_PixelFormat_G_8           >> 1: *ops++ = Op_load_g8;       break;
+-        case skcms_PixelFormat_ABGR_4444     >> 1: *ops++ = Op_load_4444;     break;
+-        case skcms_PixelFormat_RGB_565       >> 1: *ops++ = Op_load_565;      break;
+-        case skcms_PixelFormat_RGB_888       >> 1: *ops++ = Op_load_888;      break;
+-        case skcms_PixelFormat_RGBA_8888     >> 1: *ops++ = Op_load_8888;     break;
+-        case skcms_PixelFormat_RGBA_1010102  >> 1: *ops++ = Op_load_1010102;  break;
+-        case skcms_PixelFormat_RGB_161616    >> 1: *ops++ = Op_load_161616;   break;
+-        case skcms_PixelFormat_RGBA_16161616 >> 1: *ops++ = Op_load_16161616; break;
+-        case skcms_PixelFormat_RGB_hhh       >> 1: *ops++ = Op_load_hhh;      break;
+-        case skcms_PixelFormat_RGBA_hhhh     >> 1: *ops++ = Op_load_hhhh;     break;
+-        case skcms_PixelFormat_RGB_fff       >> 1: *ops++ = Op_load_fff;      break;
+-        case skcms_PixelFormat_RGBA_ffff     >> 1: *ops++ = Op_load_ffff;     break;
++        case skcms_PixelFormat_A_8             >> 1: *ops++ = Op_load_a8;         break;
++        case skcms_PixelFormat_G_8             >> 1: *ops++ = Op_load_g8;         break;
++        case skcms_PixelFormat_ABGR_4444       >> 1: *ops++ = Op_load_4444;       break;
++        case skcms_PixelFormat_RGB_565         >> 1: *ops++ = Op_load_565;        break;
++        case skcms_PixelFormat_RGB_888         >> 1: *ops++ = Op_load_888;        break;
++        case skcms_PixelFormat_RGBA_8888       >> 1: *ops++ = Op_load_8888;       break;
++        case skcms_PixelFormat_RGBA_1010102    >> 1: *ops++ = Op_load_1010102;    break;
++        case skcms_PixelFormat_RGB_161616LE    >> 1: *ops++ = Op_load_161616LE;   break;
++        case skcms_PixelFormat_RGBA_16161616LE >> 1: *ops++ = Op_load_16161616LE; break;
++        case skcms_PixelFormat_RGB_161616BE    >> 1: *ops++ = Op_load_161616BE;   break;
++        case skcms_PixelFormat_RGBA_16161616BE >> 1: *ops++ = Op_load_16161616BE; break;
++        case skcms_PixelFormat_RGB_hhh_Norm    >> 1: *ops++ = Op_load_hhh;        break;
++        case skcms_PixelFormat_RGBA_hhhh_Norm  >> 1: *ops++ = Op_load_hhhh;       break;
++        case skcms_PixelFormat_RGB_hhh         >> 1: *ops++ = Op_load_hhh;        break;
++        case skcms_PixelFormat_RGBA_hhhh       >> 1: *ops++ = Op_load_hhhh;       break;
++        case skcms_PixelFormat_RGB_fff         >> 1: *ops++ = Op_load_fff;        break;
++        case skcms_PixelFormat_RGBA_ffff       >> 1: *ops++ = Op_load_ffff;       break;
++
++        case skcms_PixelFormat_RGBA_8888_Palette8 >> 1: *ops++  = Op_load_8888_palette8;
++                                                        *args++ = palette;
++                                                        break;
++    }
++    if (srcFmt == skcms_PixelFormat_RGB_hhh_Norm ||
++        srcFmt == skcms_PixelFormat_RGBA_hhhh_Norm) {
++        *ops++ = Op_clamp;
+     }
+     if (srcFmt & 1) {
+         *ops++ = Op_swap_rb;
+@@ -2176,11 +2186,7 @@ bool skcms_Transform(const void*             src,
+         *ops++ = Op_unpremul;
+     }
+ 
+-    // TODO: We can skip this work if both srcAlpha and dstAlpha are PremulLinear, and the profiles
+-    // are the same. Also, if dstAlpha is PremulLinear, and SrcAlpha is Opaque.
+-    if (dstProfile != srcProfile ||
+-        srcAlpha == skcms_AlphaFormat_PremulLinear ||
+-        dstAlpha == skcms_AlphaFormat_PremulLinear) {
++    if (dstProfile != srcProfile) {
+ 
+         if (!prep_for_destination(dstProfile,
+                                   &from_xyz, &inv_dst_tf_r, &inv_dst_tf_b, &inv_dst_tf_g)) {
+@@ -2191,25 +2197,20 @@ bool skcms_Transform(const void*             src,
+             if (srcProfile->A2B.input_channels) {
+                 for (int i = 0; i < (int)srcProfile->A2B.input_channels; i++) {
+                     OpAndArg oa = select_curve_op(&srcProfile->A2B.input_curves[i], i);
+-                    if (oa.op != Op_noop) {
++                    if (oa.arg) {
+                         *ops++  = oa.op;
+                         *args++ = oa.arg;
+                     }
+                 }
+-                switch (srcProfile->A2B.input_channels) {
+-                    case 1: *ops++ = srcProfile->A2B.grid_8 ? Op_clut_1D_8 : Op_clut_1D_16; break;
+-                    case 2: *ops++ = srcProfile->A2B.grid_8 ? Op_clut_2D_8 : Op_clut_2D_16; break;
+-                    case 3: *ops++ = srcProfile->A2B.grid_8 ? Op_clut_3D_8 : Op_clut_3D_16; break;
+-                    case 4: *ops++ = srcProfile->A2B.grid_8 ? Op_clut_4D_8 : Op_clut_4D_16; break;
+-                    default: return false;
+-                }
++                *ops++ = Op_clamp;
++                *ops++ = Op_clut;
+                 *args++ = &srcProfile->A2B;
+             }
+ 
+             if (srcProfile->A2B.matrix_channels == 3) {
+                 for (int i = 0; i < 3; i++) {
+                     OpAndArg oa = select_curve_op(&srcProfile->A2B.matrix_curves[i], i);
+-                    if (oa.op != Op_noop) {
++                    if (oa.arg) {
+                         *ops++  = oa.op;
+                         *args++ = oa.arg;
+                     }
+@@ -2229,7 +2230,7 @@ bool skcms_Transform(const void*             src,
+             if (srcProfile->A2B.output_channels == 3) {
+                 for (int i = 0; i < 3; i++) {
+                     OpAndArg oa = select_curve_op(&srcProfile->A2B.output_curves[i], i);
+-                    if (oa.op != Op_noop) {
++                    if (oa.arg) {
+                         *ops++  = oa.op;
+                         *args++ = oa.arg;
+                     }
+@@ -2243,7 +2244,7 @@ bool skcms_Transform(const void*             src,
+         } else if (srcProfile->has_trc && srcProfile->has_toXYZD50) {
+             for (int i = 0; i < 3; i++) {
+                 OpAndArg oa = select_curve_op(&srcProfile->trc[i], i);
+-                if (oa.op != Op_noop) {
++                if (oa.arg) {
+                     *ops++  = oa.op;
+                     *args++ = oa.arg;
+                 }
+@@ -2252,13 +2253,6 @@ bool skcms_Transform(const void*             src,
+             return false;
+         }
+ 
+-        // At this point our source colors are linear, either RGB (XYZ-type profiles)
+-        // or XYZ (A2B-type profiles). Unpremul is a linear operation (multiply by a
+-        // constant 1/a), so either way we can do it now if needed.
+-        if (srcAlpha == skcms_AlphaFormat_PremulLinear) {
+-            *ops++ = Op_unpremul;
+-        }
+-
+         // A2B sources should already be in XYZD50 at this point.
+         // Others still need to be transformed using their toXYZD50 matrix.
+         // N.B. There are profiles that contain both A2B tags and toXYZD50 matrices.
+@@ -2281,22 +2275,17 @@ bool skcms_Transform(const void*             src,
+             *args++ = &from_xyz;
+         }
+ 
+-        if (dstAlpha == skcms_AlphaFormat_PremulLinear) {
+-            *ops++ = Op_premul;
+-        }
+-
+         // Encode back to dst RGB using its parametric transfer functions.
+         if (!is_identity_tf(&inv_dst_tf_r)) { *ops++ = Op_tf_r; *args++ = &inv_dst_tf_r; }
+         if (!is_identity_tf(&inv_dst_tf_g)) { *ops++ = Op_tf_g; *args++ = &inv_dst_tf_g; }
+         if (!is_identity_tf(&inv_dst_tf_b)) { *ops++ = Op_tf_b; *args++ = &inv_dst_tf_b; }
+     }
+ 
+-    // Clamp here before premul to make sure we're clamping to fixed-point values _and_ gamut,
+-    // not just to values that fit in the fixed point representation.
++    // Clamp here before premul to make sure we're clamping to normalized values _and_ gamut,
++    // not just to values that fit in [0,1].
+     //
+     // E.g. r = 1.1, a = 0.5 would fit fine in fixed point after premul (ra=0.55,a=0.5),
+     // but would be carrying r > 1, which is really unexpected for downstream consumers.
+-    // TODO(mtklein): add a unit test
+     if (dstFmt < skcms_PixelFormat_RGB_hhh) {
+         *ops++ = Op_clamp;
+     }
+@@ -2310,25 +2299,38 @@ bool skcms_Transform(const void*             src,
+     }
+     switch (dstFmt >> 1) {
+         default: return false;
+-        case skcms_PixelFormat_A_8           >> 1: *ops++ = Op_store_a8;       break;
+-        case skcms_PixelFormat_G_8           >> 1: *ops++ = Op_store_g8;       break;
+-        case skcms_PixelFormat_ABGR_4444     >> 1: *ops++ = Op_store_4444;     break;
+-        case skcms_PixelFormat_RGB_565       >> 1: *ops++ = Op_store_565;      break;
+-        case skcms_PixelFormat_RGB_888       >> 1: *ops++ = Op_store_888;      break;
+-        case skcms_PixelFormat_RGBA_8888     >> 1: *ops++ = Op_store_8888;     break;
+-        case skcms_PixelFormat_RGBA_1010102  >> 1: *ops++ = Op_store_1010102;  break;
+-        case skcms_PixelFormat_RGB_161616    >> 1: *ops++ = Op_store_161616;   break;
+-        case skcms_PixelFormat_RGBA_16161616 >> 1: *ops++ = Op_store_16161616; break;
+-        case skcms_PixelFormat_RGB_hhh       >> 1: *ops++ = Op_store_hhh;      break;
+-        case skcms_PixelFormat_RGBA_hhhh     >> 1: *ops++ = Op_store_hhhh;     break;
+-        case skcms_PixelFormat_RGB_fff       >> 1: *ops++ = Op_store_fff;      break;
+-        case skcms_PixelFormat_RGBA_ffff     >> 1: *ops++ = Op_store_ffff;     break;
+-    }
+-
+-    void (*run)(const Op*, const void**, const char*, char*, int, size_t,size_t) = run_program;
++        case skcms_PixelFormat_A_8             >> 1: *ops++ = Op_store_a8;         break;
++        case skcms_PixelFormat_G_8             >> 1: *ops++ = Op_store_g8;         break;
++        case skcms_PixelFormat_ABGR_4444       >> 1: *ops++ = Op_store_4444;       break;
++        case skcms_PixelFormat_RGB_565         >> 1: *ops++ = Op_store_565;        break;
++        case skcms_PixelFormat_RGB_888         >> 1: *ops++ = Op_store_888;        break;
++        case skcms_PixelFormat_RGBA_8888       >> 1: *ops++ = Op_store_8888;       break;
++        case skcms_PixelFormat_RGBA_1010102    >> 1: *ops++ = Op_store_1010102;    break;
++        case skcms_PixelFormat_RGB_161616LE    >> 1: *ops++ = Op_store_161616LE;   break;
++        case skcms_PixelFormat_RGBA_16161616LE >> 1: *ops++ = Op_store_16161616LE; break;
++        case skcms_PixelFormat_RGB_161616BE    >> 1: *ops++ = Op_store_161616BE;   break;
++        case skcms_PixelFormat_RGBA_16161616BE >> 1: *ops++ = Op_store_16161616BE; break;
++        case skcms_PixelFormat_RGB_hhh_Norm    >> 1: *ops++ = Op_store_hhh;        break;
++        case skcms_PixelFormat_RGBA_hhhh_Norm  >> 1: *ops++ = Op_store_hhhh;       break;
++        case skcms_PixelFormat_RGB_hhh         >> 1: *ops++ = Op_store_hhh;        break;
++        case skcms_PixelFormat_RGBA_hhhh       >> 1: *ops++ = Op_store_hhhh;       break;
++        case skcms_PixelFormat_RGB_fff         >> 1: *ops++ = Op_store_fff;        break;
++        case skcms_PixelFormat_RGBA_ffff       >> 1: *ops++ = Op_store_ffff;       break;
++    }
++
++    auto run = baseline::run_program;
+ #if defined(TEST_FOR_HSW)
+-    if (hsw_ok()) {
+-        run = run_program_hsw;
++    switch (cpu_type()) {
++        case CpuType::None:                        break;
++        case CpuType::HSW: run = hsw::run_program; break;
++        case CpuType::SKX: run = hsw::run_program; break;
++    }
++#endif
++#if defined(TEST_FOR_SKX)
++    switch (cpu_type()) {
++        case CpuType::None:                        break;
++        case CpuType::HSW:                         break;
++        case CpuType::SKX: run = skx::run_program; break;
+     }
+ #endif
+     run(program, arguments, (const char*)src, (char*)dst, n, src_bpp,dst_bpp);
+@@ -2388,7 +2390,9 @@ bool skcms_MakeUsableAsDestinationWithSingleCurve(skcms_ICCProfile* profile) {
+     float min_max_error = INFINITY_;
+     for (int i = 0; i < 3; i++) {
+         skcms_TransferFunction inv;
+-        skcms_TransferFunction_invert(&result.trc[i].parametric, &inv);
++        if (!skcms_TransferFunction_invert(&result.trc[i].parametric, &inv)) {
++            return false;
++        }
+ 
+         float err = 0;
+         for (int j = 0; j < 3; ++j) {
+diff --git a/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.h b/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.h
+index abc604b..6ca8236 100644
+--- a/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.h
++++ b/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms.h
+@@ -27,6 +27,10 @@ typedef struct skcms_Matrix3x3 {
+     float vals[3][3];
+ } skcms_Matrix3x3;
+ 
++// It is _not_ safe to alias the pointers to invert in-place.
++SKCMS_API bool            skcms_Matrix3x3_invert(const skcms_Matrix3x3*, skcms_Matrix3x3*);
++SKCMS_API skcms_Matrix3x3 skcms_Matrix3x3_concat(const skcms_Matrix3x3*, const skcms_Matrix3x3*);
++
+ // A row-major 3x4 matrix (ie vals[row][col])
+ typedef struct skcms_Matrix3x4 {
+     float vals[3][4];
+@@ -43,6 +47,10 @@ typedef struct skcms_TransferFunction {
+     float g, a,b,c,d,e,f;
+ } skcms_TransferFunction;
+ 
++SKCMS_API float skcms_TransferFunction_eval  (const skcms_TransferFunction*, float);
++SKCMS_API bool  skcms_TransferFunction_invert(const skcms_TransferFunction*,
++                                              skcms_TransferFunction*);
++
+ // Unified representation of 'curv' or 'para' tag data, or a 1D table from 'mft1' or 'mft2'
+ typedef union skcms_Curve {
+     struct {
+@@ -136,9 +144,6 @@ SKCMS_API bool skcms_TRCs_AreApproximateInverse(const skcms_ICCProfile* profile,
+ // will be used.
+ SKCMS_API bool skcms_Parse(const void*, size_t, skcms_ICCProfile*);
+ 
+-// No-op, to be removed.
+-static inline void skcms_OptimizeForSpeed(skcms_ICCProfile* p) { (void)p; }
+-
+ SKCMS_API bool skcms_ApproximateCurve(const skcms_Curve* curve,
+                                       skcms_TransferFunction* approx,
+                                       float* max_error);
+@@ -170,6 +175,8 @@ typedef enum skcms_PixelFormat {
+     skcms_PixelFormat_A_8_,
+     skcms_PixelFormat_G_8,
+     skcms_PixelFormat_G_8_,
++    skcms_PixelFormat_RGBA_8888_Palette8,
++    skcms_PixelFormat_BGRA_8888_Palette8,
+ 
+     skcms_PixelFormat_RGB_565,
+     skcms_PixelFormat_BGR_565,
+@@ -185,10 +192,26 @@ typedef enum skcms_PixelFormat {
+     skcms_PixelFormat_RGBA_1010102,
+     skcms_PixelFormat_BGRA_1010102,
+ 
+-    skcms_PixelFormat_RGB_161616,     // Big-endian.  Pointers must be 16-bit aligned.
+-    skcms_PixelFormat_BGR_161616,
+-    skcms_PixelFormat_RGBA_16161616,
+-    skcms_PixelFormat_BGRA_16161616,
++    skcms_PixelFormat_RGB_161616LE,     // Little-endian.  Pointers must be 16-bit aligned.
++    skcms_PixelFormat_BGR_161616LE,
++    skcms_PixelFormat_RGBA_16161616LE,
++    skcms_PixelFormat_BGRA_16161616LE,
++
++    skcms_PixelFormat_RGB_161616BE,     // Big-endian.  Pointers must be 16-bit aligned.
++    skcms_PixelFormat_BGR_161616BE,
++    skcms_PixelFormat_RGBA_16161616BE,
++    skcms_PixelFormat_BGRA_16161616BE,
++
++    // TODO: clean up references to non-explicit endian 16161616
++    skcms_PixelFormat_RGB_161616    = skcms_PixelFormat_RGB_161616BE,
++    skcms_PixelFormat_BGR_161616    = skcms_PixelFormat_BGR_161616BE,
++    skcms_PixelFormat_RGBA_16161616 = skcms_PixelFormat_RGBA_16161616BE,
++    skcms_PixelFormat_BGRA_16161616 = skcms_PixelFormat_BGRA_16161616BE,
++
++    skcms_PixelFormat_RGB_hhh_Norm,   // 1-5-10 half-precision float in [0,1]
++    skcms_PixelFormat_BGR_hhh_Norm,   // Pointers must be 16-bit aligned.
++    skcms_PixelFormat_RGBA_hhhh_Norm,
++    skcms_PixelFormat_BGRA_hhhh_Norm,
+ 
+     skcms_PixelFormat_RGB_hhh,        // 1-5-10 half-precision float.
+     skcms_PixelFormat_BGR_hhh,        // Pointers must be 16-bit aligned.
+@@ -208,10 +231,8 @@ typedef enum skcms_PixelFormat {
+ // any source alpha and treat it as 1.0, and will make sure that any destination alpha
+ // channel is filled with the equivalent of 1.0.
+ 
+-// When premultiplying and/or using a non-linear transfer function, it's important
+-// that we know the order the operations are applied.  If you're used to working
+-// with non-color-managed drawing systems, PremulAsEncoded is probably the "premul"
+-// you're looking for; if you want linear blending, PremulLinear is the choice for you.
++// We used to offer multiple types of premultiplication, but now just one, PremulAsEncoded.
++// This is the premul you're probably used to working with.
+ 
+ typedef enum skcms_AlphaFormat {
+     skcms_AlphaFormat_Opaque,          // alpha is always opaque
+@@ -220,8 +241,6 @@ typedef enum skcms_AlphaFormat {
+                                        //   tf-1(r),   tf-1(g),   tf-1(b),   a
+     skcms_AlphaFormat_PremulAsEncoded, // premultiplied while encoded
+                                        //   tf-1(r)*a, tf-1(g)*a, tf-1(b)*a, a
+-    skcms_AlphaFormat_PremulLinear,    // premultiplied while linear
+-                                       //   tf-1(r*a), tf-1(g*a), tf-1(b*a), a
+ } skcms_AlphaFormat;
+ 
+ // Convert npixels pixels from src format and color profile to dst format and color profile
+@@ -236,6 +255,18 @@ SKCMS_API bool skcms_Transform(const void*             src,
+                                const skcms_ICCProfile* dstProfile,
+                                size_t                  npixels);
+ 
++// As skcms_Transform(), supporting srcFmts with a palette.
++SKCMS_API bool skcms_TransformWithPalette(const void*             src,
++                                          skcms_PixelFormat       srcFmt,
++                                          skcms_AlphaFormat       srcAlpha,
++                                          const skcms_ICCProfile* srcProfile,
++                                          void*                   dst,
++                                          skcms_PixelFormat       dstFmt,
++                                          skcms_AlphaFormat       dstAlpha,
++                                          const skcms_ICCProfile* dstProfile,
++                                          size_t                  npixels,
++                                          const void*             palette);
++
+ // If profile can be used as a destination in skcms_Transform, return true. Otherwise, attempt to
+ // rewrite it with approximations where reasonable. If successful, return true. If no reasonable
+ // approximation exists, leave the profile unchanged and return false.
+diff --git a/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms_internal.h b/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms_internal.h
+index 3e2fc2b..551128a 100644
+--- a/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms_internal.h
++++ b/src/3rdparty/chromium/third_party/skia/third_party/skcms/skcms_internal.h
+@@ -21,10 +21,6 @@ extern "C" {
+ // ~~~~ General Helper Macros ~~~~
+     #define ARRAY_COUNT(arr) (int)(sizeof((arr)) / sizeof(*(arr)))
+ 
+-// ~~~~ skcms_TransferFunction ~~~~
+-    float skcms_TransferFunction_eval  (const skcms_TransferFunction*, float);
+-    bool  skcms_TransferFunction_invert(const skcms_TransferFunction*, skcms_TransferFunction*);
+-
+ // ~~~~ skcms_ICCProfile ~~~~
+     bool skcms_GetCHAD(const skcms_ICCProfile* profile, skcms_Matrix3x3* m);
+ 
+@@ -33,11 +29,6 @@ extern "C" {
+     // Used for ICC profile equivalence testing.
+     extern const uint8_t skcms_252_random_bytes[252];
+ 
+-// ~~~~ Linear Algebra ~~~~
+-    // It is _not_ safe to alias the pointers to invert in-place.
+-    bool skcms_Matrix3x3_invert(const skcms_Matrix3x3*, skcms_Matrix3x3*);
+-    skcms_Matrix3x3 skcms_Matrix3x3_concat(const skcms_Matrix3x3* A, const skcms_Matrix3x3* B);
+-
+ // ~~~~ Portable Math ~~~~
+     static inline float floorf_(float x) {
+         float roundtrip = (float)((int)x);
+@@ -46,6 +37,11 @@ extern "C" {
+     static inline float fabsf_(float x) { return x < 0 ? -x : x; }
+     float powf_(float, float);
+ 
++// ~~~~ Does this pixel format need a palette pointer to be usable? ~~~~
++    static inline bool needs_palette(skcms_PixelFormat fmt) {
++        return (fmt >> 1) == (skcms_PixelFormat_RGBA_8888_Palette8 >> 1);
++    }
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/3rdparty/chromium/third_party/skia/third_party/skcms/src/Transform_inl.h b/src/3rdparty/chromium/third_party/skia/third_party/skcms/src/Transform_inl.h
+index 57ff287..7f76b99 100644
+--- a/src/3rdparty/chromium/third_party/skia/third_party/skcms/src/Transform_inl.h
++++ b/src/3rdparty/chromium/third_party/skia/third_party/skcms/src/Transform_inl.h
+@@ -7,50 +7,74 @@
+ 
+ // Intentionally NO #pragma once... included multiple times.
+ 
+-// This file is included from skcms.c with some values and types pre-defined:
++// This file is included from skcms.cc with some pre-defined macros:
+ //    N:    depth of all vectors, 1,4,8, or 16
+-//
++// and inside a namespace, with some types already defined:
+ //    F:    a vector of N float
+ //    I32:  a vector of N int32_t
+ //    U64:  a vector of N uint64_t
+ //    U32:  a vector of N uint32_t
+ //    U16:  a vector of N uint16_t
+ //    U8:   a vector of N uint8_t
+-//
+-//    F0: a vector of N floats set to zero
+-//    F1: a vector of N floats set to one
+-//
+-//    NS(id): a macro that returns unique identifiers
+-//    ATTR:   an __attribute__ to apply to functions
+ 
+ #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+     // TODO(mtklein): this build supports FP16 compute
+ #endif
+ 
+-#if defined(__ARM_NEON)
+-    #include <arm_neon.h>
+-#elif defined(__SSE__)
+-    #include <immintrin.h>
++#if defined(__GNUC__) && !defined(__clang__)
++    // Once again, GCC is kind of weird, not allowing vector = scalar directly.
++    static constexpr F F0 = F() + 0.0f,
++                       F1 = F() + 1.0f;
++#else
++    static constexpr F F0 = 0.0f,
++                       F1 = 1.0f;
+ #endif
+ 
++// Instead of checking __AVX__ below, we'll check USING_AVX.
++// This lets skcms.cc set USING_AVX to force us in even if the compiler's not set that way.
++// Same deal for __F16C__ and __AVX2__ ~~~> USING_AVX_F16C, USING_AVX2.
++
++#if !defined(USING_AVX)      && N == 8 && defined(__AVX__)
++    #define  USING_AVX
++#endif
++#if !defined(USING_AVX_F16C) && defined(USING_AVX) && defined(__F16C__)
++    #define  USING AVX_F16C
++#endif
++#if !defined(USING_AVX2)     && defined(USING_AVX) && defined(__AVX2__)
++    #define  USING_AVX2
++#endif
++#if !defined(USING_AVX512F)  && N == 16 && defined(__AVX512F__)
++    #define  USING_AVX512F
++#endif
++
++// Similar to the AVX+ features, we define USING_NEON and USING_NEON_F16C.
++// This is more for organizational clarity... skcms.cc doesn't force these.
+ #if N == 4 && defined(__ARM_NEON)
+     #define USING_NEON
+     #if __ARM_FP & 2
+         #define USING_NEON_F16C
+     #endif
+-#elif N == 8 && defined(__AVX__)
+-    #if defined(__F16C__)
+-        #define USING_AVX_F16C
+-    #endif
+ #endif
+ 
+ // These -Wvector-conversion warnings seem to trigger in very bogus situations,
+ // like vst3q_f32() expecting a 16x char rather than a 4x float vector.  :/
+ #if defined(USING_NEON) && defined(__clang__)
+-    #pragma clang diagnostic push
+     #pragma clang diagnostic ignored "-Wvector-conversion"
+ #endif
+ 
++// GCC warns us about returning U64 on x86 because it's larger than a register.
++// You'd see warnings like, "using AVX even though AVX is not enabled".
++// We stifle these warnings... our helpers that return U64 are always inlined.
++#if defined(__SSE__) && defined(__GNUC__) && !defined(__clang__)
++    #pragma GCC diagnostic ignored "-Wpsabi"
++#endif
++
++#if defined(__clang__)
++    #define FALLTHROUGH [[clang::fallthrough]]
++#else
++    #define FALLTHROUGH
++#endif
++
+ // We tag most helper functions as SI, to enforce good code generation
+ // but also work around what we think is a bug in GCC: when targeting 32-bit
+ // x86, GCC tends to pass U16 (4x uint16_t vector) function arguments in the
+@@ -60,233 +84,260 @@
+ // It helps codegen to call __builtin_memcpy() when we know the byte count at compile time.
+ #if defined(__clang__) || defined(__GNUC__)
+     #define SI static inline __attribute__((always_inline))
+-    #define small_memcpy __builtin_memcpy
+ #else
+     #define SI static inline
+-    #define small_memcpy memcpy
+ #endif
+ 
+-// (T)v is a cast when N == 1 and a bit-pun when N>1, so we must use CAST(T, v) to actually cast.
++template <typename T, typename P>
++SI T load(const P* ptr) {
++    T val;
++    small_memcpy(&val, ptr, sizeof(val));
++    return val;
++}
++template <typename T, typename P>
++SI void store(P* ptr, const T& val) {
++    small_memcpy(ptr, &val, sizeof(val));
++}
++
++// (T)v is a cast when N == 1 and a bit-pun when N>1,
++// so we use cast<T>(v) to actually cast or bit_pun<T>(v) to bit-pun.
++template <typename D, typename S>
++SI D cast(const S& v) {
+ #if N == 1
+-    #define CAST(T, v) (T)(v)
++    return (D)v;
+ #elif defined(__clang__)
+-    #define CAST(T, v) __builtin_convertvector((v), T)
+-#elif N == 4
+-    #define CAST(T, v) T{(v)[0],(v)[1],(v)[2],(v)[3]}
+-#elif N == 8
+-    #define CAST(T, v) T{(v)[0],(v)[1],(v)[2],(v)[3], (v)[4],(v)[5],(v)[6],(v)[7]}
+-#elif N == 16
+-    #define CAST(T, v) T{(v)[0],(v)[1],(v)[ 2],(v)[ 3], (v)[ 4],(v)[ 5],(v)[ 6],(v)[ 7], \
+-                         (v)[8],(v)[9],(v)[10],(v)[11], (v)[12],(v)[13],(v)[14],(v)[15]}
++    return __builtin_convertvector(v, D);
++#else
++    D d;
++    for (int i = 0; i < N; i++) {
++        d[i] = v[i];
++    }
++    return d;
+ #endif
++}
++
++template <typename D, typename S>
++SI D bit_pun(const S& v) {
++    static_assert(sizeof(D) == sizeof(v), "");
++    return load<D>(&v);
++}
+ 
+ // When we convert from float to fixed point, it's very common to want to round,
+ // and for some reason compilers generate better code when converting to int32_t.
+-// To serve both those ends, we use this function to_fixed() instead of direct CASTs.
+-SI ATTR I32 NS(to_fixed_)(F f) {  return CAST(I32, f + 0.5f); }
+-#define to_fixed NS(to_fixed_)
++// To serve both those ends, we use this function to_fixed() instead of direct cast().
++SI I32 to_fixed(F f) {  return cast<I32>(f + 0.5f); }
+ 
+-// Comparisons result in bool when N == 1, in an I32 mask when N > 1.
+-// We've made this a macro so it can be type-generic...
+ template <typename T>
+-SI ATTR T if_then_else(I32 c, T t, T e)
+-{
++SI T if_then_else(I32 cond, T t, T e) {
+ #if N == 1
+-    return c ? t : e;
++    return cond ? t : e;
+ #else
+-    return (T)( ((c) & (I32)(t)) | (~(c) & (I32)(e)) );
++    return bit_pun<T>( ( cond & bit_pun<I32>(t)) |
++                       (~cond & bit_pun<I32>(e)) );
+ #endif
+ }
+ 
++SI F F_from_Half(U16 half) {
+ #if defined(USING_NEON_F16C)
+-    SI ATTR F   NS(F_from_Half_(U16 half)) { return      vcvt_f32_f16((float16x4_t)half); }
+-    SI ATTR U16 NS(Half_from_F_(F      f)) { return (U16)vcvt_f16_f32(                f); }
+-#elif defined(__AVX512F__)
+-    SI ATTR F   NS(F_from_Half_)(U16 half) { return (F)_mm512_cvtph_ps((__m256i)half); }
+-    SI ATTR U16 NS(Half_from_F_)(F f) {
+-        return (U16)_mm512_cvtps_ph((__m512 )f, _MM_FROUND_CUR_DIRECTION );
+-    }
++    return vcvt_f32_f16((float16x4_t)half);
++#elif defined(USING_AVX512F)
++    return (F)_mm512_cvtph_ps((__m256i)half);
+ #elif defined(USING_AVX_F16C)
+-    SI ATTR F NS(F_from_Half_)(U16 half) {
+-        typedef int16_t __attribute__((vector_size(16))) I16;
+-        return __builtin_ia32_vcvtph2ps256((I16)half);
+-    }
+-    SI ATTR U16 NS(Half_from_F_)(F f) {
+-        return (U16)__builtin_ia32_vcvtps2ph256(f, 0x04/*_MM_FROUND_CUR_DIRECTION*/);
+-    }
++    typedef int16_t __attribute__((vector_size(16))) I16;
++    return __builtin_ia32_vcvtph2ps256((I16)half);
+ #else
+-    SI ATTR F NS(F_from_Half_)(U16 half) {
+-        U32 wide = CAST(U32, half);
+-        // A half is 1-5-10 sign-exponent-mantissa, with 15 exponent bias.
+-        U32 s  = wide & 0x8000,
+-            em = wide ^ s;
+-
+-        // Constructing the float is easy if the half is not denormalized.
+-        U32 norm_bits = (s<<16) + (em<<13) + ((127-15)<<23);
+-        F norm;
+-        small_memcpy(&norm, &norm_bits, sizeof(norm));
+-
+-        // Simply flush all denorm half floats to zero.
+-        return (F)if_then_else(em < 0x0400, F0, norm);
+-    }
++    U32 wide = cast<U32>(half);
++    // A half is 1-5-10 sign-exponent-mantissa, with 15 exponent bias.
++    U32 s  = wide & 0x8000,
++        em = wide ^ s;
+ 
+-    SI ATTR U16 NS(Half_from_F_)(F f) {
+-        // A float is 1-8-23 sign-exponent-mantissa, with 127 exponent bias.
+-        U32 sem;
+-        small_memcpy(&sem, &f, sizeof(sem));
++    // Constructing the float is easy if the half is not denormalized.
++    F norm = bit_pun<F>( (s<<16) + (em<<13) + ((127-15)<<23) );
+ 
+-        U32 s  = sem & 0x80000000,
+-            em = sem ^ s;
+-
+-        // For simplicity we flush denorm half floats (including all denorm floats) to zero.
+-        return CAST(U16, (U32)if_then_else(em < 0x38800000, (U32)F0
+-                                                          , (s>>16) + (em>>13) - ((127-15)<<10)));
+-    }
++    // Simply flush all denorm half floats to zero.
++    return if_then_else(em < 0x0400, F0, norm);
+ #endif
++}
+ 
+-#define F_from_Half NS(F_from_Half_)
+-#define Half_from_F NS(Half_from_F_)
++#if defined(__clang__)
++    // The -((127-15)<<10) underflows that side of the math when
++    // we pass a denorm half float.  It's harmless... we'll take the 0 side anyway.
++    __attribute__((no_sanitize("unsigned-integer-overflow")))
++#endif
++SI U16 Half_from_F(F f) {
++#if defined(USING_NEON_F16C)
++    return (U16)vcvt_f16_f32(f);
++#elif defined(USING_AVX512F)
++    return (U16)_mm512_cvtps_ph((__m512 )f, _MM_FROUND_CUR_DIRECTION );
++#elif defined(USING_AVX_F16C)
++    return (U16)__builtin_ia32_vcvtps2ph256(f, 0x04/*_MM_FROUND_CUR_DIRECTION*/);
++#else
++    // A float is 1-8-23 sign-exponent-mantissa, with 127 exponent bias.
++    U32 sem = bit_pun<U32>(f),
++        s   = sem & 0x80000000,
++         em = sem ^ s;
++
++    // For simplicity we flush denorm half floats (including all denorm floats) to zero.
++    return cast<U16>(if_then_else(em < 0x38800000, (U32)F0
++                                                 , (s>>16) + (em>>13) - ((127-15)<<10)));
++#endif
++}
+ 
+ // Swap high and low bytes of 16-bit lanes, converting between big-endian and little-endian.
+ #if defined(USING_NEON)
+-    SI ATTR U16 NS(swap_endian_16_)(U16 v) {
++    SI U16 swap_endian_16(U16 v) {
+         return (U16)vrev16_u8((uint8x8_t) v);
+     }
+-    #define swap_endian_16 NS(swap_endian_16_)
+ #endif
+ 
+-// Passing by U64* instead of U64 avoids ABI warnings.  It's all moot when inlined.
+-SI ATTR void NS(swap_endian_16x4_)(U64* rgba) {
+-    *rgba = (*rgba & 0x00ff00ff00ff00ff) << 8
+-          | (*rgba & 0xff00ff00ff00ff00) >> 8;
++SI U64 swap_endian_16x4(const U64& rgba) {
++    return (rgba & 0x00ff00ff00ff00ff) << 8
++         | (rgba & 0xff00ff00ff00ff00) >> 8;
+ }
+-#define swap_endian_16x4 NS(swap_endian_16x4_)
+ 
+ #if defined(USING_NEON)
+-    SI ATTR F NS(min__)(F x, F y) { return (F)vminq_f32((float32x4_t)x, (float32x4_t)y); }
+-    SI ATTR F NS(max__)(F x, F y) { return (F)vmaxq_f32((float32x4_t)x, (float32x4_t)y); }
++    SI F min_(F x, F y) { return (F)vminq_f32((float32x4_t)x, (float32x4_t)y); }
++    SI F max_(F x, F y) { return (F)vmaxq_f32((float32x4_t)x, (float32x4_t)y); }
+ #else
+-    SI ATTR F NS(min__)(F x, F y) { return (F)if_then_else(x > y, y, x); }
+-    SI ATTR F NS(max__)(F x, F y) { return (F)if_then_else(x < y, y, x); }
++    SI F min_(F x, F y) { return if_then_else(x > y, y, x); }
++    SI F max_(F x, F y) { return if_then_else(x < y, y, x); }
+ #endif
+ 
+-#define min_ NS(min__)
+-#define max_ NS(max__)
+-
+-SI ATTR F NS(floor__)(F x) {
++SI F floor_(F x) {
+ #if N == 1
+     return floorf_(x);
+ #elif defined(__aarch64__)
+     return vrndmq_f32(x);
+-#elif defined(__AVX512F__)
+-    return _mm512_floor_ps(x);
+-#elif defined(__AVX__)
++#elif defined(USING_AVX512F)
++    // Clang's _mm512_floor_ps() passes its mask as -1, not (__mmask16)-1,
++    // and integer santizer catches that this implicit cast changes the
++    // value from -1 to 65535.  We'll cast manually to work around it.
++    // Read this as `return _mm512_floor_ps(x)`.
++    return _mm512_mask_floor_ps(x, (__mmask16)-1, x);
++#elif defined(USING_AVX)
+     return __builtin_ia32_roundps256(x, 0x01/*_MM_FROUND_FLOOR*/);
+ #elif defined(__SSE4_1__)
+     return _mm_floor_ps(x);
+ #else
+     // Round trip through integers with a truncating cast.
+-    F roundtrip = CAST(F, CAST(I32, x));
++    F roundtrip = cast<F>(cast<I32>(x));
+     // If x is negative, truncating gives the ceiling instead of the floor.
+-    return roundtrip - (F)if_then_else(roundtrip > x, F1, F0);
++    return roundtrip - if_then_else(roundtrip > x, F1, F0);
+ 
+     // This implementation fails for values of x that are outside
+     // the range an integer can represent.  We expect most x to be small.
+ #endif
+ }
+-#define floor_ NS(floor__)
+ 
+-SI ATTR F NS(approx_log2_)(F x) {
++SI F approx_log2(F x) {
+     // The first approximation of log2(x) is its exponent 'e', minus 127.
+-    I32 bits;
+-    small_memcpy(&bits, &x, sizeof(bits));
++    I32 bits = bit_pun<I32>(x);
+ 
+-    F e = CAST(F, bits) * (1.0f / (1<<23));
++    F e = cast<F>(bits) * (1.0f / (1<<23));
+ 
+     // If we use the mantissa too we can refine the error signficantly.
+-    I32 m_bits = (bits & 0x007fffff) | 0x3f000000;
+-    F m;
+-    small_memcpy(&m, &m_bits, sizeof(m));
++    F m = bit_pun<F>( (bits & 0x007fffff) | 0x3f000000 );
+ 
+     return e - 124.225514990f
+              -   1.498030302f*m
+              -   1.725879990f/(0.3520887068f + m);
+ }
+-#define approx_log2 NS(approx_log2_)
+ 
+-SI ATTR F NS(approx_exp2_)(F x) {
++SI F approx_exp2(F x) {
+     F fract = x - floor_(x);
+ 
+-    I32 bits = CAST(I32, (1.0f * (1<<23)) * (x + 121.274057500f
++    I32 bits = cast<I32>((1.0f * (1<<23)) * (x + 121.274057500f
+                                                -   1.490129070f*fract
+                                                +  27.728023300f/(4.84252568f - fract)));
+-    small_memcpy(&x, &bits, sizeof(x));
+-    return x;
++    return bit_pun<F>(bits);
+ }
+-#define approx_exp2 NS(approx_exp2_)
+ 
+-SI ATTR F NS(approx_pow_)(F x, float y) {
+-    return (F)if_then_else((x == F0) | (x == F1), x
+-                                                , approx_exp2(approx_log2(x) * y));
++SI F approx_pow(F x, float y) {
++    return if_then_else((x == F0) | (x == F1), x
++                                             , approx_exp2(approx_log2(x) * y));
+ }
+-#define approx_pow NS(approx_pow_)
+ 
+ // Return tf(x).
+-SI ATTR F NS(apply_tf_)(const skcms_TransferFunction* tf, F x) {
+-    F sign = (F)if_then_else(x < 0, -F1, F1);
+-    x *= sign;
++SI F apply_tf(const skcms_TransferFunction* tf, F x) {
++    // Peel off the sign bit and set x = |x|.
++    U32 bits = bit_pun<U32>(x),
++        sign = bits & 0x80000000;
++    x = bit_pun<F>(bits ^ sign);
++
++    // The transfer function has a linear part up to d, exponential at d and after.
++    F v = if_then_else(x < tf->d,            tf->c*x + tf->f
++                                , approx_pow(tf->a*x + tf->b, tf->g) + tf->e);
++
++    // Tack the sign bit back on.
++    return bit_pun<F>(sign | bit_pun<U32>(v));
++}
+ 
+-    F linear    =            tf->c*x + tf->f;
+-    F nonlinear = approx_pow(tf->a*x + tf->b, tf->g) + tf->e;
+ 
+-    return sign * (F)if_then_else(x < tf->d, linear, nonlinear);
++// Strided loads and stores of N values, starting from p.
++template <typename T, typename P>
++SI T load_3(const P* p) {
++#if N == 1
++    return (T)p[0];
++#elif N == 4
++    return T{p[ 0],p[ 3],p[ 6],p[ 9]};
++#elif N == 8
++    return T{p[ 0],p[ 3],p[ 6],p[ 9], p[12],p[15],p[18],p[21]};
++#elif N == 16
++    return T{p[ 0],p[ 3],p[ 6],p[ 9], p[12],p[15],p[18],p[21],
++             p[24],p[27],p[30],p[33], p[36],p[39],p[42],p[45]};
++#endif
+ }
+-#define apply_tf NS(apply_tf_)
+ 
+-// Strided loads and stores of N values, starting from p.
++template <typename T, typename P>
++SI T load_4(const P* p) {
+ #if N == 1
+-    #define LOAD_3(T, p) (T)(p)[0]
+-    #define LOAD_4(T, p) (T)(p)[0]
+-    #define STORE_3(p, v) (p)[0] = v
+-    #define STORE_4(p, v) (p)[0] = v
+-#elif N == 4 && !defined(USING_NEON)
+-    #define LOAD_3(T, p) T{(p)[0], (p)[3], (p)[6], (p)[ 9]}
+-    #define LOAD_4(T, p) T{(p)[0], (p)[4], (p)[8], (p)[12]};
+-    #define STORE_3(p, v) (p)[0] = (v)[0]; (p)[3] = (v)[1]; (p)[6] = (v)[2]; (p)[ 9] = (v)[3]
+-    #define STORE_4(p, v) (p)[0] = (v)[0]; (p)[4] = (v)[1]; (p)[8] = (v)[2]; (p)[12] = (v)[3]
++    return (T)p[0];
++#elif N == 4
++    return T{p[ 0],p[ 4],p[ 8],p[12]};
+ #elif N == 8
+-    #define LOAD_3(T, p) T{(p)[0], (p)[3], (p)[6], (p)[ 9],  (p)[12], (p)[15], (p)[18], (p)[21]}
+-    #define LOAD_4(T, p) T{(p)[0], (p)[4], (p)[8], (p)[12],  (p)[16], (p)[20], (p)[24], (p)[28]}
+-    #define STORE_3(p, v) (p)[ 0] = (v)[0]; (p)[ 3] = (v)[1]; (p)[ 6] = (v)[2]; (p)[ 9] = (v)[3]; \
+-                          (p)[12] = (v)[4]; (p)[15] = (v)[5]; (p)[18] = (v)[6]; (p)[21] = (v)[7]
+-    #define STORE_4(p, v) (p)[ 0] = (v)[0]; (p)[ 4] = (v)[1]; (p)[ 8] = (v)[2]; (p)[12] = (v)[3]; \
+-                          (p)[16] = (v)[4]; (p)[20] = (v)[5]; (p)[24] = (v)[6]; (p)[28] = (v)[7]
++    return T{p[ 0],p[ 4],p[ 8],p[12], p[16],p[20],p[24],p[28]};
+ #elif N == 16
+-    // TODO: revisit with AVX-512 gathers and scatters?
+-    #define LOAD_3(T, p) T{(p)[ 0], (p)[ 3], (p)[ 6], (p)[ 9], \
+-                           (p)[12], (p)[15], (p)[18], (p)[21], \
+-                           (p)[24], (p)[27], (p)[30], (p)[33], \
+-                           (p)[36], (p)[39], (p)[42], (p)[45]}
+-
+-    #define LOAD_4(T, p) T{(p)[ 0], (p)[ 4], (p)[ 8], (p)[12], \
+-                           (p)[16], (p)[20], (p)[24], (p)[28], \
+-                           (p)[32], (p)[36], (p)[40], (p)[44], \
+-                           (p)[48], (p)[52], (p)[56], (p)[60]}
+-
+-    #define STORE_3(p, v) \
+-        (p)[ 0] = (v)[ 0]; (p)[ 3] = (v)[ 1]; (p)[ 6] = (v)[ 2]; (p)[ 9] = (v)[ 3]; \
+-        (p)[12] = (v)[ 4]; (p)[15] = (v)[ 5]; (p)[18] = (v)[ 6]; (p)[21] = (v)[ 7]; \
+-        (p)[24] = (v)[ 8]; (p)[27] = (v)[ 9]; (p)[30] = (v)[10]; (p)[33] = (v)[11]; \
+-        (p)[36] = (v)[12]; (p)[39] = (v)[13]; (p)[42] = (v)[14]; (p)[45] = (v)[15]
+-
+-    #define STORE_4(p, v) \
+-        (p)[ 0] = (v)[ 0]; (p)[ 4] = (v)[ 1]; (p)[ 8] = (v)[ 2]; (p)[12] = (v)[ 3]; \
+-        (p)[16] = (v)[ 4]; (p)[20] = (v)[ 5]; (p)[24] = (v)[ 6]; (p)[28] = (v)[ 7]; \
+-        (p)[32] = (v)[ 8]; (p)[36] = (v)[ 9]; (p)[40] = (v)[10]; (p)[44] = (v)[11]; \
+-        (p)[48] = (v)[12]; (p)[52] = (v)[13]; (p)[56] = (v)[14]; (p)[60] = (v)[15]
++    return T{p[ 0],p[ 4],p[ 8],p[12], p[16],p[20],p[24],p[28],
++             p[32],p[36],p[40],p[44], p[48],p[52],p[56],p[60]};
+ #endif
++}
+ 
+-SI ATTR U8 NS(gather_8_)(const uint8_t* p, I32 ix) {
++template <typename T, typename P>
++SI void store_3(P* p, const T& v) {
++#if N == 1
++    p[0] = v;
++#elif N == 4
++    p[ 0] = v[ 0]; p[ 3] = v[ 1]; p[ 6] = v[ 2]; p[ 9] = v[ 3];
++#elif N == 8
++    p[ 0] = v[ 0]; p[ 3] = v[ 1]; p[ 6] = v[ 2]; p[ 9] = v[ 3];
++    p[12] = v[ 4]; p[15] = v[ 5]; p[18] = v[ 6]; p[21] = v[ 7];
++#elif N == 16
++    p[ 0] = v[ 0]; p[ 3] = v[ 1]; p[ 6] = v[ 2]; p[ 9] = v[ 3];
++    p[12] = v[ 4]; p[15] = v[ 5]; p[18] = v[ 6]; p[21] = v[ 7];
++    p[24] = v[ 8]; p[27] = v[ 9]; p[30] = v[10]; p[33] = v[11];
++    p[36] = v[12]; p[39] = v[13]; p[42] = v[14]; p[45] = v[15];
++#endif
++}
++
++template <typename T, typename P>
++SI void store_4(P* p, const T& v) {
++#if N == 1
++    p[0] = v;
++#elif N == 4
++    p[ 0] = v[ 0]; p[ 4] = v[ 1]; p[ 8] = v[ 2]; p[12] = v[ 3];
++#elif N == 8
++    p[ 0] = v[ 0]; p[ 4] = v[ 1]; p[ 8] = v[ 2]; p[12] = v[ 3];
++    p[16] = v[ 4]; p[20] = v[ 5]; p[24] = v[ 6]; p[28] = v[ 7];
++#elif N == 16
++    p[ 0] = v[ 0]; p[ 4] = v[ 1]; p[ 8] = v[ 2]; p[12] = v[ 3];
++    p[16] = v[ 4]; p[20] = v[ 5]; p[24] = v[ 6]; p[28] = v[ 7];
++    p[32] = v[ 8]; p[36] = v[ 9]; p[40] = v[10]; p[44] = v[11];
++    p[48] = v[12]; p[52] = v[13]; p[56] = v[14]; p[60] = v[15];
++#endif
++}
++
++
++SI U8 gather_8(const uint8_t* p, I32 ix) {
+ #if N == 1
+     U8 v = p[ix];
+ #elif N == 4
+@@ -302,68 +353,73 @@ SI ATTR U8 NS(gather_8_)(const uint8_t* p, I32 ix) {
+ #endif
+     return v;
+ }
+-#define gather_8 NS(gather_8_)
+ 
+-// Helper for gather_16(), loading the ix'th 16-bit value from p.
+-SI ATTR uint16_t NS(load_16_)(const uint8_t* p, int ix) {
+-    uint16_t v;
+-    small_memcpy(&v, p + 2*ix, 2);
++SI U16 gather_16(const uint8_t* p, I32 ix) {
++    // Load the i'th 16-bit value from p.
++    auto load_16 = [p](int i) {
++        return load<uint16_t>(p + 2*i);
++    };
++#if N == 1
++    U16 v = load_16(ix);
++#elif N == 4
++    U16 v = { load_16(ix[0]), load_16(ix[1]), load_16(ix[2]), load_16(ix[3]) };
++#elif N == 8
++    U16 v = { load_16(ix[0]), load_16(ix[1]), load_16(ix[2]), load_16(ix[3]),
++              load_16(ix[4]), load_16(ix[5]), load_16(ix[6]), load_16(ix[7]) };
++#elif N == 16
++    U16 v = { load_16(ix[ 0]), load_16(ix[ 1]), load_16(ix[ 2]), load_16(ix[ 3]),
++              load_16(ix[ 4]), load_16(ix[ 5]), load_16(ix[ 6]), load_16(ix[ 7]),
++              load_16(ix[ 8]), load_16(ix[ 9]), load_16(ix[10]), load_16(ix[11]),
++              load_16(ix[12]), load_16(ix[13]), load_16(ix[14]), load_16(ix[15]) };
++#endif
+     return v;
+ }
+-#define load_16 NS(load_16_)
+ 
+-SI ATTR U16 NS(gather_16_)(const uint8_t* p, I32 ix) {
++SI U32 gather_32(const uint8_t* p, I32 ix) {
++    // Load the i'th 32-bit value from p.
++    auto load_32 = [p](int i) {
++        return load<uint32_t>(p + 4*i);
++    };
+ #if N == 1
+-    U16 v = load_16(p,ix);
++    U32 v = load_32(ix);
+ #elif N == 4
+-    U16 v = { load_16(p,ix[0]), load_16(p,ix[1]), load_16(p,ix[2]), load_16(p,ix[3]) };
++    U32 v = { load_32(ix[0]), load_32(ix[1]), load_32(ix[2]), load_32(ix[3]) };
+ #elif N == 8
+-    U16 v = { load_16(p,ix[0]), load_16(p,ix[1]), load_16(p,ix[2]), load_16(p,ix[3]),
+-              load_16(p,ix[4]), load_16(p,ix[5]), load_16(p,ix[6]), load_16(p,ix[7]) };
++    U32 v = { load_32(ix[0]), load_32(ix[1]), load_32(ix[2]), load_32(ix[3]),
++              load_32(ix[4]), load_32(ix[5]), load_32(ix[6]), load_32(ix[7]) };
+ #elif N == 16
+-    U16 v = { load_16(p,ix[ 0]), load_16(p,ix[ 1]), load_16(p,ix[ 2]), load_16(p,ix[ 3]),
+-              load_16(p,ix[ 4]), load_16(p,ix[ 5]), load_16(p,ix[ 6]), load_16(p,ix[ 7]),
+-              load_16(p,ix[ 8]), load_16(p,ix[ 9]), load_16(p,ix[10]), load_16(p,ix[11]),
+-              load_16(p,ix[12]), load_16(p,ix[13]), load_16(p,ix[14]), load_16(p,ix[15]) };
++    U32 v = { load_32(ix[ 0]), load_32(ix[ 1]), load_32(ix[ 2]), load_32(ix[ 3]),
++              load_32(ix[ 4]), load_32(ix[ 5]), load_32(ix[ 6]), load_32(ix[ 7]),
++              load_32(ix[ 8]), load_32(ix[ 9]), load_32(ix[10]), load_32(ix[11]),
++              load_32(ix[12]), load_32(ix[13]), load_32(ix[14]), load_32(ix[15]) };
+ #endif
++    // TODO: AVX2 and AVX-512 gathers (c.f. gather_24).
+     return v;
+ }
+-#define gather_16 NS(gather_16_)
+-
+-#if !defined(__AVX2__)
+-    // Helpers for gather_24/48(), loading the ix'th 24/48-bit value from p, and 1/2 extra bytes.
+-    SI ATTR uint32_t NS(load_24_32_)(const uint8_t* p, int ix) {
+-        uint32_t v;
+-        small_memcpy(&v, p + 3*ix, 4);
+-        return v;
+-    }
+-    SI ATTR uint64_t NS(load_48_64_)(const uint8_t* p, int ix) {
+-        uint64_t v;
+-        small_memcpy(&v, p + 6*ix, 8);
+-        return v;
+-    }
+-    #define load_24_32 NS(load_24_32_)
+-    #define load_48_64 NS(load_48_64_)
+-#endif
+ 
+-SI ATTR U32 NS(gather_24_)(const uint8_t* p, I32 ix) {
++SI U32 gather_24(const uint8_t* p, I32 ix) {
+     // First, back up a byte.  Any place we're gathering from has a safe junk byte to read
+     // in front of it, either a previous table value, or some tag metadata.
+     p -= 1;
+ 
++    // Load the i'th 24-bit value from p, and 1 extra byte.
++    auto load_24_32 = [p](int i) {
++        return load<uint32_t>(p + 3*i);
++    };
++
+     // Now load multiples of 4 bytes (a junk byte, then r,g,b).
+ #if N == 1
+-    U32 v = load_24_32(p,ix);
++    U32 v = load_24_32(ix);
+ #elif N == 4
+-    U32 v = { load_24_32(p,ix[0]), load_24_32(p,ix[1]), load_24_32(p,ix[2]), load_24_32(p,ix[3]) };
+-#elif N == 8 && !defined(__AVX2__)
+-    U32 v = { load_24_32(p,ix[0]), load_24_32(p,ix[1]), load_24_32(p,ix[2]), load_24_32(p,ix[3]),
+-              load_24_32(p,ix[4]), load_24_32(p,ix[5]), load_24_32(p,ix[6]), load_24_32(p,ix[7]) };
++    U32 v = { load_24_32(ix[0]), load_24_32(ix[1]), load_24_32(ix[2]), load_24_32(ix[3]) };
++#elif N == 8 && !defined(USING_AVX2)
++    U32 v = { load_24_32(ix[0]), load_24_32(ix[1]), load_24_32(ix[2]), load_24_32(ix[3]),
++              load_24_32(ix[4]), load_24_32(ix[5]), load_24_32(ix[6]), load_24_32(ix[7]) };
+ #elif N == 8
++    (void)load_24_32;
+     // The gather instruction here doesn't need any particular alignment,
+     // but the intrinsic takes a const int*.
+-    const int* p4;
+-    small_memcpy(&p4, &p, sizeof(p4));
++    const int* p4 = bit_pun<const int*>(p);
+     I32 zero = { 0, 0, 0, 0,  0, 0, 0, 0},
+         mask = {-1,-1,-1,-1, -1,-1,-1,-1};
+     #if defined(__clang__)
+@@ -372,42 +428,46 @@ SI ATTR U32 NS(gather_24_)(const uint8_t* p, I32 ix) {
+         U32 v = (U32)__builtin_ia32_gathersiv8si(zero, p4, 3*ix, mask, 1);
+     #endif
+ #elif N == 16
++    (void)load_24_32;
+     // The intrinsic is supposed to take const void* now, but it takes const int*, just like AVX2.
+     // And AVX-512 swapped the order of arguments.  :/
+-    const int* p4;
+-    small_memcpy(&p4, &p, sizeof(p4));
++    const int* p4 = bit_pun<const int*>(p);
+     U32 v = (U32)_mm512_i32gather_epi32((__m512i)(3*ix), p4, 1);
+ #endif
+ 
+     // Shift off the junk byte, leaving r,g,b in low 24 bits (and zero in the top 8).
+     return v >> 8;
+ }
+-#define gather_24 NS(gather_24_)
+ 
+ #if !defined(__arm__)
+-    SI ATTR void NS(gather_48_)(const uint8_t* p, I32 ix, U64* v) {
++    SI void gather_48(const uint8_t* p, I32 ix, U64* v) {
+         // As in gather_24(), with everything doubled.
+         p -= 2;
+ 
++        // Load the i'th 48-bit value from p, and 2 extra bytes.
++        auto load_48_64 = [p](int i) {
++            return load<uint64_t>(p + 6*i);
++        };
++
+     #if N == 1
+-        *v = load_48_64(p,ix);
++        *v = load_48_64(ix);
+     #elif N == 4
+         *v = U64{
+-            load_48_64(p,ix[0]), load_48_64(p,ix[1]), load_48_64(p,ix[2]), load_48_64(p,ix[3]),
++            load_48_64(ix[0]), load_48_64(ix[1]), load_48_64(ix[2]), load_48_64(ix[3]),
+         };
+-    #elif N == 8 && !defined(__AVX2__)
++    #elif N == 8 && !defined(USING_AVX2)
+         *v = U64{
+-            load_48_64(p,ix[0]), load_48_64(p,ix[1]), load_48_64(p,ix[2]), load_48_64(p,ix[3]),
+-            load_48_64(p,ix[4]), load_48_64(p,ix[5]), load_48_64(p,ix[6]), load_48_64(p,ix[7]),
++            load_48_64(ix[0]), load_48_64(ix[1]), load_48_64(ix[2]), load_48_64(ix[3]),
++            load_48_64(ix[4]), load_48_64(ix[5]), load_48_64(ix[6]), load_48_64(ix[7]),
+         };
+     #elif N == 8
++        (void)load_48_64;
+         typedef int32_t   __attribute__((vector_size(16))) Half_I32;
+         typedef long long __attribute__((vector_size(32))) Half_I64;
+ 
+         // The gather instruction here doesn't need any particular alignment,
+         // but the intrinsic takes a const long long*.
+-        const long long int* p8;
+-        small_memcpy(&p8, &p, sizeof(p8));
++        const long long int* p8 = bit_pun<const long long int*>(p);
+ 
+         Half_I64 zero = { 0, 0, 0, 0},
+                  mask = {-1,-1,-1,-1};
+@@ -423,177 +483,194 @@ SI ATTR U32 NS(gather_24_)(const uint8_t* p, I32 ix) {
+             Half_I64 lo = (Half_I64)__builtin_ia32_gathersiv4di(zero, p8, ix_lo, mask, 1),
+                      hi = (Half_I64)__builtin_ia32_gathersiv4di(zero, p8, ix_hi, mask, 1);
+         #endif
+-        small_memcpy((char*)v +  0, &lo, 32);
+-        small_memcpy((char*)v + 32, &hi, 32);
++        store((char*)v +  0, lo);
++        store((char*)v + 32, hi);
+     #elif N == 16
+-        const long long int* p8;
+-        small_memcpy(&p8, &p, sizeof(p8));
++        (void)load_48_64;
++        const long long int* p8 = bit_pun<const long long int*>(p);
+         __m512i lo = _mm512_i32gather_epi64(_mm512_extracti32x8_epi32((__m512i)(6*ix), 0), p8, 1),
+                 hi = _mm512_i32gather_epi64(_mm512_extracti32x8_epi32((__m512i)(6*ix), 1), p8, 1);
+-        small_memcpy((char*)v +  0, &lo, 64);
+-        small_memcpy((char*)v + 64, &hi, 64);
++        store((char*)v +  0, lo);
++        store((char*)v + 64, hi);
+     #endif
+ 
+         *v >>= 16;
+     }
+-    #define gather_48 NS(gather_48_)
+ #endif
+ 
+-SI ATTR F NS(F_from_U8_)(U8 v) {
+-    return CAST(F, v) * (1/255.0f);
++SI F F_from_U8(U8 v) {
++    return cast<F>(v) * (1/255.0f);
+ }
+-#define F_from_U8 NS(F_from_U8_)
+ 
+-SI ATTR F NS(F_from_U16_BE_)(U16 v) {
++SI F F_from_U16_BE(U16 v) {
+     // All 16-bit ICC values are big-endian, so we byte swap before converting to float.
+     // MSVC catches the "loss" of data here in the portable path, so we also make sure to mask.
+-    v = U16( 0 | ((v & 0x00ff) << 8) | ((v & 0xff00) >> 8) );
+-    return CAST(F, v) * (1/65535.0f);
++    v = (U16)( ((v<<8)|(v>>8)) & 0xffff );
++    return cast<F>(v) * (1/65535.0f);
+ }
+-#define F_from_U16_BE NS(F_from_U16_BE_)
+ 
+-SI ATTR F NS(minus_1_ulp_)(F v) {
+-    I32 bits;
+-    small_memcpy(&bits, &v, sizeof(bits));
+-    bits = bits - 1;
+-    small_memcpy(&v, &bits, sizeof(bits));
+-    return v;
++SI F minus_1_ulp(F v) {
++    return bit_pun<F>( bit_pun<I32>(v) - 1 );
+ }
+-#define minus_1_ulp NS(minus_1_ulp_)
+ 
+-SI ATTR F NS(table_8_)(const skcms_Curve* curve, F v) {
++SI F table(const skcms_Curve* curve, F v) {
+     // Clamp the input to [0,1], then scale to a table index.
+     F ix = max_(F0, min_(v, F1)) * (float)(curve->table_entries - 1);
+ 
+     // We'll look up (equal or adjacent) entries at lo and hi, then lerp by t between the two.
+-    I32 lo = CAST(I32,             ix      ),
+-        hi = CAST(I32, minus_1_ulp(ix+1.0f));
+-    F t = ix - CAST(F, lo);  // i.e. the fractional part of ix.
++    I32 lo = cast<I32>(            ix      ),
++        hi = cast<I32>(minus_1_ulp(ix+1.0f));
++    F t = ix - cast<F>(lo);  // i.e. the fractional part of ix.
+ 
+     // TODO: can we load l and h simultaneously?  Each entry in 'h' is either
+     // the same as in 'l' or adjacent.  We have a rough idea that's it'd always be safe
+     // to read adjacent entries and perhaps underflow the table by a byte or two
+     // (it'd be junk, but always safe to read).  Not sure how to lerp yet.
+-    F l = F_from_U8(gather_8(curve->table_8, lo)),
+-      h = F_from_U8(gather_8(curve->table_8, hi));
++    F l,h;
++    if (curve->table_8) {
++        l = F_from_U8(gather_8(curve->table_8, lo));
++        h = F_from_U8(gather_8(curve->table_8, hi));
++    } else {
++        l = F_from_U16_BE(gather_16(curve->table_16, lo));
++        h = F_from_U16_BE(gather_16(curve->table_16, hi));
++    }
+     return l + (h-l)*t;
+ }
+ 
+-SI ATTR F NS(table_16_)(const skcms_Curve* curve, F v) {
+-    // All just as in table_8() until the gathers.
+-    F ix = max_(F0, min_(v, F1)) * (float)(curve->table_entries - 1);
++SI void sample_clut_8(const skcms_A2B* a2b, I32 ix, F* r, F* g, F* b) {
++    U32 rgb = gather_24(a2b->grid_8, ix);
+ 
+-    I32 lo = CAST(I32,             ix      ),
+-        hi = CAST(I32, minus_1_ulp(ix+1.0f));
+-    F t = ix - CAST(F, lo);
++    *r = cast<F>((rgb >>  0) & 0xff) * (1/255.0f);
++    *g = cast<F>((rgb >>  8) & 0xff) * (1/255.0f);
++    *b = cast<F>((rgb >> 16) & 0xff) * (1/255.0f);
++}
+ 
+-    // TODO: as above, load l and h simultaneously?
+-    // Here we could even use AVX2-style 32-bit gathers.
+-    F l = F_from_U16_BE(gather_16(curve->table_16, lo)),
+-      h = F_from_U16_BE(gather_16(curve->table_16, hi));
+-    return l + (h-l)*t;
++SI void sample_clut_16(const skcms_A2B* a2b, I32 ix, F* r, F* g, F* b) {
++#if defined(__arm__)
++    // This is up to 2x faster on 32-bit ARM than the #else-case fast path.
++    *r = F_from_U16_BE(gather_16(a2b->grid_16, 3*ix+0));
++    *g = F_from_U16_BE(gather_16(a2b->grid_16, 3*ix+1));
++    *b = F_from_U16_BE(gather_16(a2b->grid_16, 3*ix+2));
++#else
++    // This strategy is much faster for 64-bit builds, and fine for 32-bit x86 too.
++    U64 rgb;
++    gather_48(a2b->grid_16, ix, &rgb);
++    rgb = swap_endian_16x4(rgb);
++
++    *r = cast<F>((rgb >>  0) & 0xffff) * (1/65535.0f);
++    *g = cast<F>((rgb >> 16) & 0xffff) * (1/65535.0f);
++    *b = cast<F>((rgb >> 32) & 0xffff) * (1/65535.0f);
++#endif
+ }
+ 
+-// Color lookup tables, by input dimension and bit depth.
+-template<int I, int B>
+-inline ATTR void clut(const skcms_A2B* a2b, I32 ix, I32 stride, F* r, F* g, F* b, F a);
++// GCC 7.2.0 hits an internal compiler error with -finline-functions (or -O3)
++// when targeting MIPS 64,  I think attempting to inline clut() into exec_ops().
++#if 1 && defined(__GNUC__) && !defined(__clang__) && defined(__mips64)
++    #define MAYBE_NOINLINE __attribute__((noinline))
++#else
++    #define MAYBE_NOINLINE
++#endif
++
++MAYBE_NOINLINE
++static void clut(const skcms_A2B* a2b, F* r, F* g, F* b, F a) {
++    const int dim = (int)a2b->input_channels;
++    assert (0 < dim && dim <= 4);
++
++    // For each of these arrays, think foo[2*dim], but we use foo[8] since we know dim <= 4.
++    I32 index [8];  // Index contribution by dimension, first low from 0, then high from 4.
++    F   weight[8];  // Weight for each contribution, again first low, then high.
++
++    // O(dim) work first: calculate index,weight from r,g,b,a.
++    const F inputs[] = { *r,*g,*b,a };
++    for (int i = dim-1, stride = 1; i >= 0; i--) {
++        // x is where we logically want to sample the grid in the i-th dimension.
++        F x = inputs[i] * (float)(a2b->grid_points[i] - 1);
++
++        // But we can't index at floats.  lo and hi are the two integer grid points surrounding x.
++        I32 lo = cast<I32>(            x      ),   // i.e. trunc(x) == floor(x) here.
++            hi = cast<I32>(minus_1_ulp(x+1.0f));
++        // Notice how we fold in the accumulated stride across previous dimensions here.
++        index[i+0] = lo * stride;
++        index[i+4] = hi * stride;
++        stride *= a2b->grid_points[i];
++
++        // We'll interpolate between those two integer grid points by t.
++        F t = x - cast<F>(lo);  // i.e. fract(x)
++        weight[i+0] = 1-t;
++        weight[i+4] = t;
++    }
+ 
+-template<>
+-void clut<0, 8>(const skcms_A2B* a2b, I32 ix, I32 stride, F* r, F* g, F* b, F a) {
+-    U32 rgb = gather_24(a2b->grid_8, ix);
++    *r = *g = *b = F0;
+ 
+-    *r = CAST(F, (rgb >>  0) & 0xff) * (1/255.0f);
+-    *g = CAST(F, (rgb >>  8) & 0xff) * (1/255.0f);
+-    *b = CAST(F, (rgb >> 16) & 0xff) * (1/255.0f);
++    // We'll sample 2^dim == 1<<dim table entries per pixel,
++    // in all combinations of low and high in each dimension.
++    for (int combo = 0; combo < (1<<dim); combo++) {  // This loop can be done in any order.
+ 
+-    (void)a;
+-    (void)stride;
+-}
++        // Each of these upcoming (combo&N)*K expressions here evaluates to 0 or 4,
++        // where 0 selects the low index contribution and its weight 1-t,
++        // or 4 the high index contribution and its weight t.
+ 
+-template<>
+-void clut<0, 16>(const skcms_A2B* a2b, I32 ix, I32 stride, F* r, F* g, F* b, F a) {
+-    #if defined(__arm__)
+-        // This is up to 2x faster on 32-bit ARM than the #else-case fast path.
+-        *r = F_from_U16_BE(gather_16(a2b->grid_16, 3*ix+0));
+-        *g = F_from_U16_BE(gather_16(a2b->grid_16, 3*ix+1));
+-        *b = F_from_U16_BE(gather_16(a2b->grid_16, 3*ix+2));
+-    #else
+-        // This strategy is much faster for 64-bit builds, and fine for 32-bit x86 too.
+-        U64 rgb;
+-        gather_48(a2b->grid_16, ix, &rgb);
+-        swap_endian_16x4(&rgb);
+-
+-        *r = CAST(F, (rgb >>  0) & 0xffff) * (1/65535.0f);
+-        *g = CAST(F, (rgb >> 16) & 0xffff) * (1/65535.0f);
+-        *b = CAST(F, (rgb >> 32) & 0xffff) * (1/65535.0f);
+-    #endif
+-    (void)a;
+-    (void)stride;
+-}
++        // Since 0<dim≤4, we can always just start off with the 0-th channel,
++        // then handle the others conditionally.
++        I32 ix = index [0 + (combo&1)*4];
++        F    w = weight[0 + (combo&1)*4];
++
++        switch ((dim-1)&3) {  // This lets the compiler know there are no other cases to handle.
++            case 3: ix += index [3 + (combo&8)/2];
++                    w  *= weight[3 + (combo&8)/2];
++                    FALLTHROUGH;
++                    // fall through
++
++            case 2: ix += index [2 + (combo&4)*1];
++                    w  *= weight[2 + (combo&4)*1];
++                    FALLTHROUGH;
++                    // fall through
+ 
+-// These are all the same basic approach: handle one dimension, then the rest recursively.
+-// We let "I" be the current dimension, and "J" the previous dimension, I-1.  "B" is the bit depth.
+-template<int I, int B>
+-void clut(const skcms_A2B* a2b, I32 ix, I32 stride, F* r, F* g, F* b, F a) {
+-        I32 limit = CAST(I32, F0);                                                                \
+-        limit += a2b->grid_points[I-1];                                                           \
+-                                                                                                  \
+-        const F* srcs[] = { r,g,b,&a };                                                           \
+-        F src = *srcs[I-1];                                                                       \
+-                                                                                                  \
+-        F x = max_(F0, min_(src, F1)) * CAST(F, limit - 1);                                       \
+-                                                                                                  \
+-        I32 lo = CAST(I32,             x      ),                                                  \
+-            hi = CAST(I32, minus_1_ulp(x+1.0f));                                                  \
+-        F lr = *r, lg = *g, lb = *b,                                                              \
+-          hr = *r, hg = *g, hb = *b;                                                              \
+-        clut<I-1, B>(a2b, stride*lo + ix, stride*limit, &lr,&lg,&lb,a);                  \
+-        clut<I-1, B>(a2b, stride*hi + ix, stride*limit, &hr,&hg,&hb,a);                  \
+-                                                                                                  \
+-        F t = x - CAST(F, lo);                                                                    \
+-        *r = lr + (hr-lr)*t;                                                                      \
+-        *g = lg + (hg-lg)*t;                                                                      \
+-        *b = lb + (hb-lb)*t;                                                                      \
++            case 1: ix += index [1 + (combo&2)*2];
++                    w  *= weight[1 + (combo&2)*2];
++        }
++
++        F R,G,B;
++        if (a2b->grid_8) {
++            sample_clut_8 (a2b,ix, &R,&G,&B);
++        } else {
++            sample_clut_16(a2b,ix, &R,&G,&B);
++        }
++
++        *r += w*R;
++        *g += w*G;
++        *b += w*B;
+     }
++}
+ 
+-ATTR
+-static void NS(exec_ops)(const Op* ops, const void** args,
+-                         const char* src, char* dst, int i) {
+-    F r = F0, g = F0, b = F0, a = F0;
++static void exec_ops(const Op* ops, const void** args,
++                     const char* src, char* dst, int i) {
++    F r = F0, g = F0, b = F0, a = F1;
+     while (true) {
+         switch (*ops++) {
+-            case Op_noop: break;
+-
+             case Op_load_a8:{
+-                U8 alpha;
+-                small_memcpy(&alpha, src + i, N);
+-                a = F_from_U8(alpha);
++                a = F_from_U8(load<U8>(src + 1*i));
+             } break;
+ 
+             case Op_load_g8:{
+-                U8 gray;
+-                small_memcpy(&gray, src + i, N);
+-                r = g = b = F_from_U8(gray);
++                r = g = b = F_from_U8(load<U8>(src + 1*i));
+             } break;
+ 
+             case Op_load_4444:{
+-                U16 abgr;
+-                small_memcpy(&abgr, src + 2*i, 2*N);
++                U16 abgr = load<U16>(src + 2*i);
+ 
+-                r = CAST(F, (abgr >> 12) & 0xf) * (1/15.0f);
+-                g = CAST(F, (abgr >>  8) & 0xf) * (1/15.0f);
+-                b = CAST(F, (abgr >>  4) & 0xf) * (1/15.0f);
+-                a = CAST(F, (abgr >>  0) & 0xf) * (1/15.0f);
++                r = cast<F>((abgr >> 12) & 0xf) * (1/15.0f);
++                g = cast<F>((abgr >>  8) & 0xf) * (1/15.0f);
++                b = cast<F>((abgr >>  4) & 0xf) * (1/15.0f);
++                a = cast<F>((abgr >>  0) & 0xf) * (1/15.0f);
+             } break;
+ 
+             case Op_load_565:{
+-                U16 rgb;
+-                small_memcpy(&rgb, src + 2*i, 2*N);
++                U16 rgb = load<U16>(src + 2*i);
+ 
+-                r = CAST(F, rgb & (uint16_t)(31<< 0)) * (1.0f / (31<< 0));
+-                g = CAST(F, rgb & (uint16_t)(63<< 5)) * (1.0f / (63<< 5));
+-                b = CAST(F, rgb & (uint16_t)(31<<11)) * (1.0f / (31<<11));
+-                a = F1;
++                r = cast<F>(rgb & (uint16_t)(31<< 0)) * (1.0f / (31<< 0));
++                g = cast<F>(rgb & (uint16_t)(63<< 5)) * (1.0f / (63<< 5));
++                b = cast<F>(rgb & (uint16_t)(31<<11)) * (1.0f / (31<<11));
+             } break;
+ 
+             case Op_load_888:{
+@@ -611,77 +688,118 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 // Now if we squint, those 3 uint8x8_t we constructed are really U16s, easy to
+                 // convert to F.  (Again, U32 would be even better here if drop ARMv7 or split
+                 // ARMv7 and ARMv8 impls.)
+-                r = CAST(F, (U16)v.val[0]) * (1/255.0f);
+-                g = CAST(F, (U16)v.val[1]) * (1/255.0f);
+-                b = CAST(F, (U16)v.val[2]) * (1/255.0f);
++                r = cast<F>((U16)v.val[0]) * (1/255.0f);
++                g = cast<F>((U16)v.val[1]) * (1/255.0f);
++                b = cast<F>((U16)v.val[2]) * (1/255.0f);
+             #else
+-                r = CAST(F, LOAD_3(U32, rgb+0) ) * (1/255.0f);
+-                g = CAST(F, LOAD_3(U32, rgb+1) ) * (1/255.0f);
+-                b = CAST(F, LOAD_3(U32, rgb+2) ) * (1/255.0f);
++                r = cast<F>(load_3<U32>(rgb+0) ) * (1/255.0f);
++                g = cast<F>(load_3<U32>(rgb+1) ) * (1/255.0f);
++                b = cast<F>(load_3<U32>(rgb+2) ) * (1/255.0f);
+             #endif
+-                a = F1;
+             } break;
+ 
+             case Op_load_8888:{
+-                U32 rgba;
+-                small_memcpy(&rgba, src + 4*i, 4*N);
++                U32 rgba = load<U32>(src + 4*i);
+ 
+-                r = CAST(F, (rgba >>  0) & 0xff) * (1/255.0f);
+-                g = CAST(F, (rgba >>  8) & 0xff) * (1/255.0f);
+-                b = CAST(F, (rgba >> 16) & 0xff) * (1/255.0f);
+-                a = CAST(F, (rgba >> 24) & 0xff) * (1/255.0f);
++                r = cast<F>((rgba >>  0) & 0xff) * (1/255.0f);
++                g = cast<F>((rgba >>  8) & 0xff) * (1/255.0f);
++                b = cast<F>((rgba >> 16) & 0xff) * (1/255.0f);
++                a = cast<F>((rgba >> 24) & 0xff) * (1/255.0f);
++            } break;
++
++            case Op_load_8888_palette8:{
++                const uint8_t* palette = (const uint8_t*) *args++;
++                I32 ix = cast<I32>(load<U8>(src + 1*i));
++                U32 rgba = gather_32(palette, ix);
++
++                r = cast<F>((rgba >>  0) & 0xff) * (1/255.0f);
++                g = cast<F>((rgba >>  8) & 0xff) * (1/255.0f);
++                b = cast<F>((rgba >> 16) & 0xff) * (1/255.0f);
++                a = cast<F>((rgba >> 24) & 0xff) * (1/255.0f);
+             } break;
+ 
+             case Op_load_1010102:{
+-                U32 rgba;
+-                small_memcpy(&rgba, src + 4*i, 4*N);
++                U32 rgba = load<U32>(src + 4*i);
+ 
+-                r = CAST(F, (rgba >>  0) & 0x3ff) * (1/1023.0f);
+-                g = CAST(F, (rgba >> 10) & 0x3ff) * (1/1023.0f);
+-                b = CAST(F, (rgba >> 20) & 0x3ff) * (1/1023.0f);
+-                a = CAST(F, (rgba >> 30) & 0x3  ) * (1/   3.0f);
++                r = cast<F>((rgba >>  0) & 0x3ff) * (1/1023.0f);
++                g = cast<F>((rgba >> 10) & 0x3ff) * (1/1023.0f);
++                b = cast<F>((rgba >> 20) & 0x3ff) * (1/1023.0f);
++                a = cast<F>((rgba >> 30) & 0x3  ) * (1/   3.0f);
+             } break;
+ 
+-            case Op_load_161616:{
++            case Op_load_161616LE:{
+                 uintptr_t ptr = (uintptr_t)(src + 6*i);
+                 assert( (ptr & 1) == 0 );                   // src must be 2-byte aligned for this
+                 const uint16_t* rgb = (const uint16_t*)ptr; // cast to const uint16_t* to be safe.
+             #if defined(USING_NEON)
+                 uint16x4x3_t v = vld3_u16(rgb);
+-                r = CAST(F, swap_endian_16((U16)v.val[0])) * (1/65535.0f);
+-                g = CAST(F, swap_endian_16((U16)v.val[1])) * (1/65535.0f);
+-                b = CAST(F, swap_endian_16((U16)v.val[2])) * (1/65535.0f);
++                r = cast<F>((U16)v.val[0]) * (1/65535.0f);
++                g = cast<F>((U16)v.val[1]) * (1/65535.0f);
++                b = cast<F>((U16)v.val[2]) * (1/65535.0f);
+             #else
+-                U32 R = LOAD_3(U32, rgb+0),
+-                    G = LOAD_3(U32, rgb+1),
+-                    B = LOAD_3(U32, rgb+2);
++                r = cast<F>(load_3<U32>(rgb+0)) * (1/65535.0f);
++                g = cast<F>(load_3<U32>(rgb+1)) * (1/65535.0f);
++                b = cast<F>(load_3<U32>(rgb+2)) * (1/65535.0f);
++            #endif
++            } break;
++
++            case Op_load_16161616LE:{
++                uintptr_t ptr = (uintptr_t)(src + 8*i);
++                assert( (ptr & 1) == 0 );                    // src must be 2-byte aligned for this
++                const uint16_t* rgba = (const uint16_t*)ptr; // cast to const uint16_t* to be safe.
++            #if defined(USING_NEON)
++                uint16x4x4_t v = vld4_u16(rgba);
++                r = cast<F>((U16)v.val[0]) * (1/65535.0f);
++                g = cast<F>((U16)v.val[1]) * (1/65535.0f);
++                b = cast<F>((U16)v.val[2]) * (1/65535.0f);
++                a = cast<F>((U16)v.val[3]) * (1/65535.0f);
++            #else
++                U64 px = load<U64>(rgba);
++
++                r = cast<F>((px >>  0) & 0xffff) * (1/65535.0f);
++                g = cast<F>((px >> 16) & 0xffff) * (1/65535.0f);
++                b = cast<F>((px >> 32) & 0xffff) * (1/65535.0f);
++                a = cast<F>((px >> 48) & 0xffff) * (1/65535.0f);
++            #endif
++            } break;
++
++            case Op_load_161616BE:{
++                uintptr_t ptr = (uintptr_t)(src + 6*i);
++                assert( (ptr & 1) == 0 );                   // src must be 2-byte aligned for this
++                const uint16_t* rgb = (const uint16_t*)ptr; // cast to const uint16_t* to be safe.
++            #if defined(USING_NEON)
++                uint16x4x3_t v = vld3_u16(rgb);
++                r = cast<F>(swap_endian_16((U16)v.val[0])) * (1/65535.0f);
++                g = cast<F>(swap_endian_16((U16)v.val[1])) * (1/65535.0f);
++                b = cast<F>(swap_endian_16((U16)v.val[2])) * (1/65535.0f);
++            #else
++                U32 R = load_3<U32>(rgb+0),
++                    G = load_3<U32>(rgb+1),
++                    B = load_3<U32>(rgb+2);
+                 // R,G,B are big-endian 16-bit, so byte swap them before converting to float.
+-                r = CAST(F, (R & 0x00ff)<<8 | (R & 0xff00)>>8) * (1/65535.0f);
+-                g = CAST(F, (G & 0x00ff)<<8 | (G & 0xff00)>>8) * (1/65535.0f);
+-                b = CAST(F, (B & 0x00ff)<<8 | (B & 0xff00)>>8) * (1/65535.0f);
++                r = cast<F>((R & 0x00ff)<<8 | (R & 0xff00)>>8) * (1/65535.0f);
++                g = cast<F>((G & 0x00ff)<<8 | (G & 0xff00)>>8) * (1/65535.0f);
++                b = cast<F>((B & 0x00ff)<<8 | (B & 0xff00)>>8) * (1/65535.0f);
+             #endif
+-                a = F1;
+             } break;
+ 
+-            case Op_load_16161616:{
++            case Op_load_16161616BE:{
+                 uintptr_t ptr = (uintptr_t)(src + 8*i);
+                 assert( (ptr & 1) == 0 );                    // src must be 2-byte aligned for this
+                 const uint16_t* rgba = (const uint16_t*)ptr; // cast to const uint16_t* to be safe.
+             #if defined(USING_NEON)
+                 uint16x4x4_t v = vld4_u16(rgba);
+-                r = CAST(F, swap_endian_16((U16)v.val[0])) * (1/65535.0f);
+-                g = CAST(F, swap_endian_16((U16)v.val[1])) * (1/65535.0f);
+-                b = CAST(F, swap_endian_16((U16)v.val[2])) * (1/65535.0f);
+-                a = CAST(F, swap_endian_16((U16)v.val[3])) * (1/65535.0f);
++                r = cast<F>(swap_endian_16((U16)v.val[0])) * (1/65535.0f);
++                g = cast<F>(swap_endian_16((U16)v.val[1])) * (1/65535.0f);
++                b = cast<F>(swap_endian_16((U16)v.val[2])) * (1/65535.0f);
++                a = cast<F>(swap_endian_16((U16)v.val[3])) * (1/65535.0f);
+             #else
+-                U64 px;
+-                small_memcpy(&px, rgba, 8*N);
+-
+-                swap_endian_16x4(&px);
+-                r = CAST(F, (px >>  0) & 0xffff) * (1/65535.0f);
+-                g = CAST(F, (px >> 16) & 0xffff) * (1/65535.0f);
+-                b = CAST(F, (px >> 32) & 0xffff) * (1/65535.0f);
+-                a = CAST(F, (px >> 48) & 0xffff) * (1/65535.0f);
++                U64 px = swap_endian_16x4(load<U64>(rgba));
++
++                r = cast<F>((px >>  0) & 0xffff) * (1/65535.0f);
++                g = cast<F>((px >> 16) & 0xffff) * (1/65535.0f);
++                b = cast<F>((px >> 32) & 0xffff) * (1/65535.0f);
++                a = cast<F>((px >> 48) & 0xffff) * (1/65535.0f);
+             #endif
+             } break;
+ 
+@@ -695,14 +813,13 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                     G = (U16)v.val[1],
+                     B = (U16)v.val[2];
+             #else
+-                U16 R = LOAD_3(U16, rgb+0),
+-                    G = LOAD_3(U16, rgb+1),
+-                    B = LOAD_3(U16, rgb+2);
++                U16 R = load_3<U16>(rgb+0),
++                    G = load_3<U16>(rgb+1),
++                    B = load_3<U16>(rgb+2);
+             #endif
+                 r = F_from_Half(R);
+                 g = F_from_Half(G);
+                 b = F_from_Half(B);
+-                a = F1;
+             } break;
+ 
+             case Op_load_hhhh:{
+@@ -716,12 +833,11 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                     B = (U16)v.val[2],
+                     A = (U16)v.val[3];
+             #else
+-                U64 px;
+-                small_memcpy(&px, rgba, 8*N);
+-                U16 R = CAST(U16, (px >>  0) & 0xffff),
+-                    G = CAST(U16, (px >> 16) & 0xffff),
+-                    B = CAST(U16, (px >> 32) & 0xffff),
+-                    A = CAST(U16, (px >> 48) & 0xffff);
++                U64 px = load<U64>(rgba);
++                U16 R = cast<U16>((px >>  0) & 0xffff),
++                    G = cast<U16>((px >> 16) & 0xffff),
++                    B = cast<U16>((px >> 32) & 0xffff),
++                    A = cast<U16>((px >> 48) & 0xffff);
+             #endif
+                 r = F_from_Half(R);
+                 g = F_from_Half(G);
+@@ -739,11 +855,10 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 g = (F)v.val[1];
+                 b = (F)v.val[2];
+             #else
+-                r = LOAD_3(F, rgb+0);
+-                g = LOAD_3(F, rgb+1);
+-                b = LOAD_3(F, rgb+2);
++                r = load_3<F>(rgb+0);
++                g = load_3<F>(rgb+1);
++                b = load_3<F>(rgb+2);
+             #endif
+-                a = F1;
+             } break;
+ 
+             case Op_load_ffff:{
+@@ -757,10 +872,10 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 b = (F)v.val[2];
+                 a = (F)v.val[3];
+             #else
+-                r = LOAD_4(F, rgba+0);
+-                g = LOAD_4(F, rgba+1);
+-                b = LOAD_4(F, rgba+2);
+-                a = LOAD_4(F, rgba+3);
++                r = load_4<F>(rgba+0);
++                g = load_4<F>(rgba+1);
++                b = load_4<F>(rgba+2);
++                a = load_4<F>(rgba+3);
+             #endif
+             } break;
+ 
+@@ -795,7 +910,7 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+             } break;
+ 
+             case Op_unpremul:{
+-                F scale = (F)if_then_else(F1 / a < INFINITY_, F1 / a, F0);
++                F scale = if_then_else(F1 / a < INFINITY_, F1 / a, F0);
+                 r *= scale;
+                 g *= scale;
+                 b *= scale;
+@@ -838,9 +953,9 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                   X = Y + A*(1/500.0f),
+                   Z = Y - B*(1/200.0f);
+ 
+-                X = (F)if_then_else(X*X*X > 0.008856f, X*X*X, (X - (16/116.0f)) * (1/7.787f));
+-                Y = (F)if_then_else(Y*Y*Y > 0.008856f, Y*Y*Y, (Y - (16/116.0f)) * (1/7.787f));
+-                Z = (F)if_then_else(Z*Z*Z > 0.008856f, Z*Z*Z, (Z - (16/116.0f)) * (1/7.787f));
++                X = if_then_else(X*X*X > 0.008856f, X*X*X, (X - (16/116.0f)) * (1/7.787f));
++                Y = if_then_else(Y*Y*Y > 0.008856f, Y*Y*Y, (Y - (16/116.0f)) * (1/7.787f));
++                Z = if_then_else(Z*Z*Z > 0.008856f, Z*Z*Z, (Z - (16/116.0f)) * (1/7.787f));
+ 
+                 // Adjust to XYZD50 illuminant, and stuff back into r,g,b for the next op.
+                 r = X * 0.9642f;
+@@ -853,86 +968,43 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+             case Op_tf_b:{ b = apply_tf((const skcms_TransferFunction*)*args++, b); } break;
+             case Op_tf_a:{ a = apply_tf((const skcms_TransferFunction*)*args++, a); } break;
+ 
+-            case Op_table_8_r: { r = NS(table_8_ )((const skcms_Curve*)*args++, r); } break;
+-            case Op_table_8_g: { g = NS(table_8_ )((const skcms_Curve*)*args++, g); } break;
+-            case Op_table_8_b: { b = NS(table_8_ )((const skcms_Curve*)*args++, b); } break;
+-            case Op_table_8_a: { a = NS(table_8_ )((const skcms_Curve*)*args++, a); } break;
+-
+-            case Op_table_16_r:{ r = NS(table_16_)((const skcms_Curve*)*args++, r); } break;
+-            case Op_table_16_g:{ g = NS(table_16_)((const skcms_Curve*)*args++, g); } break;
+-            case Op_table_16_b:{ b = NS(table_16_)((const skcms_Curve*)*args++, b); } break;
+-            case Op_table_16_a:{ a = NS(table_16_)((const skcms_Curve*)*args++, a); } break;
+-
+-            case Op_clut_1D_8:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<1,8>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-            } break;
+-
+-            case Op_clut_1D_16:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<1,16>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-            } break;
+-
+-            case Op_clut_2D_8:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<2,8>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-            } break;
+-
+-            case Op_clut_2D_16:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<2,16>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-            } break;
++            case Op_table_r: { r = table((const skcms_Curve*)*args++, r); } break;
++            case Op_table_g: { g = table((const skcms_Curve*)*args++, g); } break;
++            case Op_table_b: { b = table((const skcms_Curve*)*args++, b); } break;
++            case Op_table_a: { a = table((const skcms_Curve*)*args++, a); } break;
+ 
+-            case Op_clut_3D_8:{
++            case Op_clut: {
+                 const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<3,8>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-            } break;
++                clut(a2b, &r,&g,&b,a);
+ 
+-            case Op_clut_3D_16:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<3,16>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-            } break;
+-
+-            case Op_clut_4D_8:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<4,8>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-                // 'a' was really a CMYK K, so our output is actually opaque.
+-                a = F1;
+-            } break;
+-
+-            case Op_clut_4D_16:{
+-                const skcms_A2B* a2b = (const skcms_A2B*) *args++;
+-                clut<4,16>(a2b, CAST(I32,F0),CAST(I32,F1), &r,&g,&b,a);
+-                // 'a' was really a CMYK K, so our output is actually opaque.
+-                a = F1;
++                if (a2b->input_channels == 4) {
++                    // CMYK is opaque.
++                    a = F1;
++                }
+             } break;
+ 
+     // Notice, from here on down the store_ ops all return, ending the loop.
+ 
+             case Op_store_a8: {
+-                U8 alpha = CAST(U8, to_fixed(a * 255));
+-                small_memcpy(dst + i, &alpha, N);
++                store(dst + 1*i, cast<U8>(to_fixed(a * 255)));
+             } return;
+ 
+             case Op_store_g8: {
+                 // g should be holding luminance (Y) (r,g,b ~~~> X,Y,Z)
+-                U8 gray = CAST(U8, to_fixed(g * 255));
+-                small_memcpy(dst + i, &gray, N);
++                store(dst + 1*i, cast<U8>(to_fixed(g * 255)));
+             } return;
+ 
+             case Op_store_4444: {
+-                U16 abgr = CAST(U16, to_fixed(r * 15) << 12)
+-                         | CAST(U16, to_fixed(g * 15) <<  8)
+-                         | CAST(U16, to_fixed(b * 15) <<  4)
+-                         | CAST(U16, to_fixed(a * 15) <<  0);
+-                small_memcpy(dst + 2*i, &abgr, 2*N);
++                store<U16>(dst + 2*i, cast<U16>(to_fixed(r * 15) << 12)
++                                    | cast<U16>(to_fixed(g * 15) <<  8)
++                                    | cast<U16>(to_fixed(b * 15) <<  4)
++                                    | cast<U16>(to_fixed(a * 15) <<  0));
+             } return;
+ 
+             case Op_store_565: {
+-                U16 rgb = CAST(U16, to_fixed(r * 31) <<  0 )
+-                        | CAST(U16, to_fixed(g * 63) <<  5 )
+-                        | CAST(U16, to_fixed(b * 31) << 11 );
+-                small_memcpy(dst + 2*i, &rgb, 2*N);
++                store<U16>(dst + 2*i, cast<U16>(to_fixed(r * 31) <<  0 )
++                                    | cast<U16>(to_fixed(g * 63) <<  5 )
++                                    | cast<U16>(to_fixed(b * 31) << 11 ));
+             } return;
+ 
+             case Op_store_888: {
+@@ -941,9 +1013,9 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 // Same deal as load_888 but in reverse... we'll store using uint8x8x3_t, but
+                 // get there via U16 to save some instructions converting to float.  And just
+                 // like load_888, we'd prefer to go via U32 but for ARMv7 support.
+-                U16 R = CAST(U16, to_fixed(r * 255)),
+-                    G = CAST(U16, to_fixed(g * 255)),
+-                    B = CAST(U16, to_fixed(b * 255));
++                U16 R = cast<U16>(to_fixed(r * 255)),
++                    G = cast<U16>(to_fixed(g * 255)),
++                    B = cast<U16>(to_fixed(b * 255));
+ 
+                 uint8x8x3_t v = {{ (uint8x8_t)R, (uint8x8_t)G, (uint8x8_t)B }};
+                 vst3_lane_u8(rgb+0, v, 0);
+@@ -951,69 +1023,106 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 vst3_lane_u8(rgb+6, v, 4);
+                 vst3_lane_u8(rgb+9, v, 6);
+             #else
+-                STORE_3(rgb+0, CAST(U8, to_fixed(r * 255)) );
+-                STORE_3(rgb+1, CAST(U8, to_fixed(g * 255)) );
+-                STORE_3(rgb+2, CAST(U8, to_fixed(b * 255)) );
++                store_3(rgb+0, cast<U8>(to_fixed(r * 255)) );
++                store_3(rgb+1, cast<U8>(to_fixed(g * 255)) );
++                store_3(rgb+2, cast<U8>(to_fixed(b * 255)) );
+             #endif
+             } return;
+ 
+             case Op_store_8888: {
+-                U32 rgba = CAST(U32, to_fixed(r * 255) <<  0)
+-                         | CAST(U32, to_fixed(g * 255) <<  8)
+-                         | CAST(U32, to_fixed(b * 255) << 16)
+-                         | CAST(U32, to_fixed(a * 255) << 24);
+-                small_memcpy(dst + 4*i, &rgba, 4*N);
++                store(dst + 4*i, cast<U32>(to_fixed(r * 255) <<  0)
++                               | cast<U32>(to_fixed(g * 255) <<  8)
++                               | cast<U32>(to_fixed(b * 255) << 16)
++                               | cast<U32>(to_fixed(a * 255) << 24));
+             } return;
+ 
+             case Op_store_1010102: {
+-                U32 rgba = CAST(U32, to_fixed(r * 1023) <<  0)
+-                         | CAST(U32, to_fixed(g * 1023) << 10)
+-                         | CAST(U32, to_fixed(b * 1023) << 20)
+-                         | CAST(U32, to_fixed(a *    3) << 30);
+-                small_memcpy(dst + 4*i, &rgba, 4*N);
++                store(dst + 4*i, cast<U32>(to_fixed(r * 1023) <<  0)
++                               | cast<U32>(to_fixed(g * 1023) << 10)
++                               | cast<U32>(to_fixed(b * 1023) << 20)
++                               | cast<U32>(to_fixed(a *    3) << 30));
++            } return;
++
++            case Op_store_161616LE: {
++                uintptr_t ptr = (uintptr_t)(dst + 6*i);
++                assert( (ptr & 1) == 0 );                // The dst pointer must be 2-byte aligned
++                uint16_t* rgb = (uint16_t*)ptr;          // for this cast to uint16_t* to be safe.
++            #if defined(USING_NEON)
++                uint16x4x3_t v = {{
++                    (uint16x4_t)cast<U16>(to_fixed(r * 65535)),
++                    (uint16x4_t)cast<U16>(to_fixed(g * 65535)),
++                    (uint16x4_t)cast<U16>(to_fixed(b * 65535)),
++                }};
++                vst3_u16(rgb, v);
++            #else
++                store_3(rgb+0, cast<U16>(to_fixed(r * 65535)));
++                store_3(rgb+1, cast<U16>(to_fixed(g * 65535)));
++                store_3(rgb+2, cast<U16>(to_fixed(b * 65535)));
++            #endif
++
++            } return;
++
++            case Op_store_16161616LE: {
++                uintptr_t ptr = (uintptr_t)(dst + 8*i);
++                assert( (ptr & 1) == 0 );               // The dst pointer must be 2-byte aligned
++                uint16_t* rgba = (uint16_t*)ptr;        // for this cast to uint16_t* to be safe.
++            #if defined(USING_NEON)
++                uint16x4x4_t v = {{
++                    (uint16x4_t)cast<U16>(to_fixed(r * 65535)),
++                    (uint16x4_t)cast<U16>(to_fixed(g * 65535)),
++                    (uint16x4_t)cast<U16>(to_fixed(b * 65535)),
++                    (uint16x4_t)cast<U16>(to_fixed(a * 65535)),
++                }};
++                vst4_u16(rgba, v);
++            #else
++                U64 px = cast<U64>(to_fixed(r * 65535)) <<  0
++                       | cast<U64>(to_fixed(g * 65535)) << 16
++                       | cast<U64>(to_fixed(b * 65535)) << 32
++                       | cast<U64>(to_fixed(a * 65535)) << 48;
++                store(rgba, px);
++            #endif
+             } return;
+ 
+-            case Op_store_161616: {
++            case Op_store_161616BE: {
+                 uintptr_t ptr = (uintptr_t)(dst + 6*i);
+                 assert( (ptr & 1) == 0 );                // The dst pointer must be 2-byte aligned
+                 uint16_t* rgb = (uint16_t*)ptr;          // for this cast to uint16_t* to be safe.
+             #if defined(USING_NEON)
+                 uint16x4x3_t v = {{
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(r * 65535))),
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(g * 65535))),
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(b * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(r * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(g * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(b * 65535))),
+                 }};
+                 vst3_u16(rgb, v);
+             #else
+                 I32 R = to_fixed(r * 65535),
+                     G = to_fixed(g * 65535),
+                     B = to_fixed(b * 65535);
+-                STORE_3(rgb+0, CAST(U16, (R & 0x00ff) << 8 | (R & 0xff00) >> 8) );
+-                STORE_3(rgb+1, CAST(U16, (G & 0x00ff) << 8 | (G & 0xff00) >> 8) );
+-                STORE_3(rgb+2, CAST(U16, (B & 0x00ff) << 8 | (B & 0xff00) >> 8) );
++                store_3(rgb+0, cast<U16>((R & 0x00ff) << 8 | (R & 0xff00) >> 8) );
++                store_3(rgb+1, cast<U16>((G & 0x00ff) << 8 | (G & 0xff00) >> 8) );
++                store_3(rgb+2, cast<U16>((B & 0x00ff) << 8 | (B & 0xff00) >> 8) );
+             #endif
+ 
+             } return;
+ 
+-            case Op_store_16161616: {
++            case Op_store_16161616BE: {
+                 uintptr_t ptr = (uintptr_t)(dst + 8*i);
+                 assert( (ptr & 1) == 0 );               // The dst pointer must be 2-byte aligned
+                 uint16_t* rgba = (uint16_t*)ptr;        // for this cast to uint16_t* to be safe.
+             #if defined(USING_NEON)
+                 uint16x4x4_t v = {{
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(r * 65535))),
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(g * 65535))),
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(b * 65535))),
+-                    (uint16x4_t)swap_endian_16(CAST(U16, to_fixed(a * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(r * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(g * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(b * 65535))),
++                    (uint16x4_t)swap_endian_16(cast<U16>(to_fixed(a * 65535))),
+                 }};
+                 vst4_u16(rgba, v);
+             #else
+-                U64 px = CAST(U64, to_fixed(r * 65535)) <<  0
+-                       | CAST(U64, to_fixed(g * 65535)) << 16
+-                       | CAST(U64, to_fixed(b * 65535)) << 32
+-                       | CAST(U64, to_fixed(a * 65535)) << 48;
+-                swap_endian_16x4(&px);
+-                small_memcpy(rgba, &px, 8*N);
++                U64 px = cast<U64>(to_fixed(r * 65535)) <<  0
++                       | cast<U64>(to_fixed(g * 65535)) << 16
++                       | cast<U64>(to_fixed(b * 65535)) << 32
++                       | cast<U64>(to_fixed(a * 65535)) << 48;
++                store(rgba, swap_endian_16x4(px));
+             #endif
+             } return;
+ 
+@@ -1033,9 +1142,9 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 }};
+                 vst3_u16(rgb, v);
+             #else
+-                STORE_3(rgb+0, R);
+-                STORE_3(rgb+1, G);
+-                STORE_3(rgb+2, B);
++                store_3(rgb+0, R);
++                store_3(rgb+1, G);
++                store_3(rgb+2, B);
+             #endif
+             } return;
+ 
+@@ -1057,11 +1166,10 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 }};
+                 vst4_u16(rgba, v);
+             #else
+-                U64 px = CAST(U64, R) <<  0
+-                       | CAST(U64, G) << 16
+-                       | CAST(U64, B) << 32
+-                       | CAST(U64, A) << 48;
+-                small_memcpy(rgba, &px, 8*N);
++                store(rgba, cast<U64>(R) <<  0
++                          | cast<U64>(G) << 16
++                          | cast<U64>(B) << 32
++                          | cast<U64>(A) << 48);
+             #endif
+ 
+             } return;
+@@ -1078,9 +1186,9 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 }};
+                 vst3q_f32(rgb, v);
+             #else
+-                STORE_3(rgb+0, r);
+-                STORE_3(rgb+1, g);
+-                STORE_3(rgb+2, b);
++                store_3(rgb+0, r);
++                store_3(rgb+1, g);
++                store_3(rgb+2, b);
+             #endif
+             } return;
+ 
+@@ -1097,65 +1205,54 @@ static void NS(exec_ops)(const Op* ops, const void** args,
+                 }};
+                 vst4q_f32(rgba, v);
+             #else
+-                STORE_4(rgba+0, r);
+-                STORE_4(rgba+1, g);
+-                STORE_4(rgba+2, b);
+-                STORE_4(rgba+3, a);
++                store_4(rgba+0, r);
++                store_4(rgba+1, g);
++                store_4(rgba+2, b);
++                store_4(rgba+3, a);
+             #endif
+             } return;
+         }
+     }
+ }
+ 
+-ATTR
+-static void NS(run_program)(const Op* program, const void** arguments,
+-                           const char* src, char* dst, int n,
+-                           const size_t src_bpp, const size_t dst_bpp) {
++
++static void run_program(const Op* program, const void** arguments,
++                        const char* src, char* dst, int n,
++                        const size_t src_bpp, const size_t dst_bpp) {
+     int i = 0;
+     while (n >= N) {
+-        NS(exec_ops)(program, arguments, src, dst, i);
++        exec_ops(program, arguments, src, dst, i);
+         i += N;
+         n -= N;
+     }
+     if (n > 0) {
+-        char tmp_src[4*4*N] = {0},
+-             tmp_dst[4*4*N] = {0};
++        char tmp[4*4*N] = {0};
+ 
+-        memcpy(tmp_src, (const char*)src + (size_t)i*src_bpp, (size_t)n*src_bpp);
+-        NS(exec_ops)(program, arguments, tmp_src, tmp_dst, 0);
+-        memcpy((char*)dst + (size_t)i*dst_bpp, tmp_dst, (size_t)n*dst_bpp);
++        memcpy(tmp, (const char*)src + (size_t)i*src_bpp, (size_t)n*src_bpp);
++        exec_ops(program, arguments, tmp, tmp, 0);
++        memcpy((char*)dst + (size_t)i*dst_bpp, tmp, (size_t)n*dst_bpp);
+     }
+ }
+ 
+-#if defined(USING_NEON) && defined(__clang__)
+-    #pragma clang diagnostic pop
+-#endif
+-
+ // Clean up any #defines we may have set so that we can be #included again.
+-
+-#if defined(USING_NEON)
+-    #undef  USING_NEON
+-#endif
+-
+-#if defined(USING_NEON_F16C)
+-    #undef  USING_NEON_F16C
++#if defined(USING_AVX)
++    #undef  USING_AVX
+ #endif
+-
+ #if defined(USING_AVX_F16C)
+     #undef  USING_AVX_F16C
+ #endif
+-
+-#undef CAST
+-
+-#if defined(LOAD_3)
+-    #undef  LOAD_3
++#if defined(USING_AVX2)
++    #undef  USING_AVX2
+ #endif
+-#if defined(LOAD_4)
+-    #undef  LOAD_4
++#if defined(USING_AVX512F)
++    #undef  USING_AVX512F
+ #endif
+-#if defined(STORE_3)
+-    #undef  STORE_3
++
++#if defined(USING_NEON)
++    #undef  USING_NEON
+ #endif
+-#if defined(STORE_4)
+-    #undef  STORE_4
++#if defined(USING_NEON_F16C)
++    #undef  USING_NEON_F16C
+ #endif
++
++#undef FALLTHROUGH
+diff --git a/src/3rdparty/chromium/third_party/skia/third_party/skcms/version.sha1 b/src/3rdparty/chromium/third_party/skia/third_party/skcms/version.sha1
+index 35829c3..f7d6b3a 100755
+--- a/src/3rdparty/chromium/third_party/skia/third_party/skcms/version.sha1
++++ b/src/3rdparty/chromium/third_party/skia/third_party/skcms/version.sha1
+@@ -1 +1 @@
+-b2fffd2ecf2e47ec2faf811865f9eb934be1c0e1
++668026c511f3d4be9447b0ae28ea7a73b5899262
