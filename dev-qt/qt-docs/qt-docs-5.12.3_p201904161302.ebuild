@@ -1,18 +1,27 @@
-# Copyright 1999-2019 Gentoo Authors
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
-EAPI=7
+EAPI=6
+
+inherit versionator
 
 DESCRIPTION="Qt5 documentation, for use with Qt Creator and other tools"
 HOMEPAGE="https://doc.qt.io/"
 
 PV_FULL=${PV/_p/-0-}
-PV_NODOTS=$(ver_rs 1-3 '' ${PV/_p*/})
+PV_NODOTS=$(get_version_component_range 1)$(get_version_component_range 2)$(get_version_component_range 3)
+
+# Docs for remoteobjects didn't get updated, explicitly set the version here:
+PV_RO_NODOTS="5120"
+PV_RO_FULL="5.12.0-0-201810221122"
+
 BASE_URI="https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt5_${PV_NODOTS}_src_doc_examples/qt.qt5.${PV_NODOTS}.doc"
 SRC_URI="${BASE_URI}/${PV_FULL}qt-everywhere-documentation.7z
 	charts? ( ${BASE_URI}.qtcharts/${PV_FULL}qtcharts-documentation.7z )
 	datavis? ( ${BASE_URI}.qtdatavis3d/${PV_FULL}qtdatavisualization-documentation.7z )
 	networkauth? ( ${BASE_URI}.qtnetworkauth/${PV_FULL}qtnetworkauth-documentation.7z )
+	purchasing? ( ${BASE_URI}.qtpurchasing/${PV_FULL}qtpurchasing-documentation.7z )
+	remoteobjects? ( ${BASE_URI//${PV_NODOTS}/${PV_RO_NODOTS}}.qtremoteobjects/${PV_RO_FULL}qtremoteobjects-documentation.7z )
 	script? ( ${BASE_URI}.qtscript/${PV_FULL}qtscript-documentation.7z
 		${BASE_URI}.qtscript/${PV_FULL}qtscripttools-documentation.7z )
 	virtualkeyboard? ( ${BASE_URI}.qtvirtualkeyboard/${PV_FULL}qtvirtualkeyboard-documentation.7z )
@@ -21,15 +30,15 @@ SRC_URI="${BASE_URI}/${PV_FULL}qt-everywhere-documentation.7z
 
 LICENSE="FDL-1.3"
 SLOT="5"
-KEYWORDS="amd64 ~arm arm64 ~ppc ~ppc64 x86"
+KEYWORDS="~amd64 ~arm ~arm64 ~ppc ~ppc64 ~x86"
 
 IUSE="3d bluetooth charts datavis declarative graphicaleffects +html location
-	multimedia networkauth +qch script sensors virtualkeyboard webengine"
+	multimedia networkauth purchasing remoteobjects +qch script sensors virtualkeyboard webengine"
 REQUIRED_USE="|| ( html qch )"
 
-BDEPEND="app-arch/p7zip"
+DEPEND="app-arch/p7zip"
 
-S=${WORKDIR}/Docs/Qt-${PV%_p*}
+S="${WORKDIR}/Docs/Qt-${PV%_p*}"
 
 src_prepare() {
 	default
@@ -50,8 +59,8 @@ src_prepare() {
 }
 
 src_install() {
-	# must be the same as QT5_DOCDIR
-	local dest=/usr/share/qt5-doc
+	# must be the same as QT_INSTALL_DOCS
+	local dest="/usr/share/doc/qt-${PV%_p*}"
 	insinto "${dest}"
 	use html && doins -r */
 	use qch && doins *.qch
