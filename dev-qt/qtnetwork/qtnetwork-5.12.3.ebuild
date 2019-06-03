@@ -8,10 +8,10 @@ inherit qt5-build
 DESCRIPTION="Network abstraction library for the Qt5 framework"
 
 if [[ ${QT5_BUILD_TYPE} == release ]]; then
-	KEYWORDS="amd64 arm arm64 ~hppa ~ppc ppc64 ~sparc x86 ~amd64-fbsd"
+	KEYWORDS="~amd64 ~arm ~arm64 ~hppa ~ppc ~ppc64 ~sparc ~x86 ~amd64-fbsd"
 fi
 
-IUSE="bindist connman libproxy networkmanager sctp +ssl"
+IUSE="bindist connman libproxy libressl networkmanager sctp +ssl"
 
 DEPEND="
 	~dev-qt/qtcore-${PV}
@@ -20,12 +20,19 @@ DEPEND="
 	libproxy? ( net-libs/libproxy )
 	networkmanager? ( ~dev-qt/qtdbus-${PV} )
 	sctp? ( kernel_linux? ( net-misc/lksctp-tools ) )
-	ssl? ( dev-libs/openssl:0=[bindist=] )
+	ssl? (
+		!libressl? ( dev-libs/openssl:0=[bindist=] )
+		libressl? ( dev-libs/libressl:0= )
+	)
 "
 RDEPEND="${DEPEND}
 	connman? ( net-misc/connman )
 	networkmanager? ( net-misc/networkmanager )
 "
+
+PATCHES=(
+	"${FILESDIR}"/${PN}-5.12.1-libressl.patch
+)
 
 QT5_TARGET_SUBDIRS=(
 	src/network
