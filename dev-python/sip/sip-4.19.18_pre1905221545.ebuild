@@ -70,6 +70,9 @@ src_prepare() {
 	fi
 
 	default
+
+	# Fix failure on python2 due to utf-8 encoded characters with no encoding set.
+	grep -q "coding=utf-8" "${S}/configure.py"	|| sed -e '1i# coding=utf-8' -i "${S}/configure.py"
 }
 
 src_configure() {
